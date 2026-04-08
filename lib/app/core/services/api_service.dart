@@ -107,7 +107,43 @@ class ApiService {
   Future<DoctorProfile> updateDoctorProfile({
     required int doctorId,
     required Map<String, String> fields,
+    Map<String, PlatformFile> files = const {},
   }) async {
+    if (files.isNotEmpty) {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${ApiConstants.baseUrl}/doctor/profile/$doctorId/update'),
+      );
+      request.headers['Accept'] = 'application/json';
+      request.fields.addAll(fields);
+
+      for (final entry in files.entries) {
+        final path = entry.value.path;
+        if (path != null && path.isNotEmpty) {
+          request.files.add(await http.MultipartFile.fromPath(entry.key, path));
+          continue;
+        }
+
+        final bytes = entry.value.bytes;
+        if (bytes == null || bytes.isEmpty) {
+          throw Exception('Missing file data for ${entry.key}');
+        }
+
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            entry.key,
+            bytes,
+            filename: entry.value.name,
+          ),
+        );
+      }
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      final body = _parseResponse(response);
+      return DoctorProfile.fromJson(body['data'] as Map<String, dynamic>);
+    }
+
     final response = await _client.post(
       Uri.parse('${ApiConstants.baseUrl}/doctor/profile/$doctorId/update'),
       headers: {'Accept': 'application/json'},

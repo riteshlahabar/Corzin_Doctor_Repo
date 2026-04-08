@@ -61,12 +61,10 @@ class _DashboardTabState extends State<DashboardTab> {
           ? const [
               _BannerData(
                 image: 'assets/images/app_icon.jpg',
-                text: 'Book your consultation with trusted specialists.',
                 isNetwork: false,
               ),
               _BannerData(
                 image: 'assets/images/logo.png',
-                text: 'Plan daily visits and track your appointments easily.',
                 isNetwork: false,
               ),
             ]
@@ -74,7 +72,6 @@ class _DashboardTabState extends State<DashboardTab> {
               .map(
                 (item) => _BannerData(
                   image: item.imageUrl.isNotEmpty ? item.imageUrl : item.imagePath,
-                  text: item.title.isNotEmpty ? item.title : 'Doctor care updates and announcements.',
                   isNetwork: item.imageUrl.isNotEmpty || item.imagePath.startsWith('http'),
                 ),
               )
@@ -149,7 +146,6 @@ class _DashboardTabState extends State<DashboardTab> {
                       itemCount: bannerData.length,
                       itemBuilder: (context, index) => _BannerCard(
                         image: bannerData[index].image,
-                        text: bannerData[index].text,
                         isNetwork: bannerData[index].isNetwork,
                       ),
                     ),
@@ -363,12 +359,10 @@ class _DashboardTabState extends State<DashboardTab> {
 class _BannerCard extends StatelessWidget {
   const _BannerCard({
     required this.image,
-    required this.text,
     required this.isNetwork,
   });
 
   final String image;
-  final String text;
   final bool isNetwork;
 
   @override
@@ -378,68 +372,25 @@ class _BannerCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFEAF5EA), Color(0xFFD4E8D5)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: const Color(0xFFEAF5EA),
         ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: 8,
-              top: 8,
-              bottom: 8,
-              child: Opacity(
-                opacity: 0.22,
-                child: isNetwork
-                    ? Image.network(
-                        image,
-                        width: 120,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => const SizedBox(width: 120),
-                      )
-                    : Image.asset(
-                        image,
-                        width: 120,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => const SizedBox(width: 120),
-                      ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 110, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      fontFamily: 'SF Pro Display',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.black,
-                    ),
-                  ),
-                  const Row(
-                    children: [
-                      Text(
-                        'Book Now',
-                        style: TextStyle(
-                          fontFamily: 'Avenir',
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward_rounded, size: 18),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: isNetwork
+              ? Image.network(
+                  image,
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.expand(),
+                )
+              : Image.asset(
+                  image,
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.expand(),
+                ),
         ),
       ),
     );
@@ -449,12 +400,10 @@ class _BannerCard extends StatelessWidget {
 class _BannerData {
   const _BannerData({
     required this.image,
-    required this.text,
     required this.isNetwork,
   });
 
   final String image;
-  final String text;
   final bool isNetwork;
 }
 

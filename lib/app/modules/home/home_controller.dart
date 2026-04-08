@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -81,6 +82,8 @@ class HomeController extends GetxController {
 
   Future<void> updateDoctorProfile({
     required Map<String, String> fields,
+    Map<String, PlatformFile> files = const {},
+    String successMessage = 'Doctor information saved successfully.',
   }) async {
     final current = profile.value;
     if (current == null) return;
@@ -90,11 +93,12 @@ class HomeController extends GetxController {
       final updated = await _apiService.updateDoctorProfile(
         doctorId: current.id,
         fields: fields,
+        files: files,
       );
       profile.value = updated;
       await SessionService.saveProfile(updated);
       notifications.assignAll(_buildNotifications(updated));
-      Get.snackbar('Profile Updated', 'Doctor information saved successfully.');
+      Get.snackbar('Profile Updated', successMessage);
     } finally {
       loading.value = false;
     }

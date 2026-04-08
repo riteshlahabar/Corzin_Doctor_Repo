@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:get/get.dart';
 
 import '../../core/constants/api_constants.dart';
@@ -22,6 +23,7 @@ class _ProfileTabState extends State<ProfileTab> {
   bool _showDoctorInfo = false;
   bool _isEditing = false;
   bool _isSaving = false;
+  String? _uploadingDocumentField;
 
   late final TextEditingController _firstNameController;
   late final TextEditingController _lastNameController;
@@ -311,10 +313,24 @@ class _ProfileTabState extends State<ProfileTab> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (profile.photoUrl.trim().isNotEmpty) _documentCard('Doctor Photo', profile.photoUrl),
+              if (profile.photoUrl.trim().isNotEmpty)
+                _documentCard(
+                  title: 'Doctor Photo',
+                  source: profile.photoUrl,
+                  uploadField: 'doctor_photo',
+                  profile: profile,
+                  imageOnly: true,
+                ),
               ...profile.documents.entries
                   .where((entry) => entry.value.trim().isNotEmpty)
-                  .map((entry) => _documentCard(entry.key.replaceAll('_', ' '), entry.value)),
+                  .map(
+                    (entry) => _documentCard(
+                      title: _toTitle(entry.key),
+                      source: entry.value,
+                      uploadField: _documentUploadField(entry.key),
+                      profile: profile,
+                    ),
+                  ),
             ],
           ),
         ],
@@ -390,7 +406,13 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
-  Widget _documentCard(String title, String source) {
+  Widget _documentCard({
+    required String title,
+    required String source,
+    required String uploadField,
+    required DoctorProfile profile,
+    bool imageOnly = false,
+  }) {
     final resolved = _resolveUrl(source.trim());
     final lower = (resolved ?? '').toLowerCase();
     final isImage = lower.endsWith('.jpg') ||
@@ -398,6 +420,7 @@ class _ProfileTabState extends State<ProfileTab> {
         lower.endsWith('.png') ||
         lower.endsWith('.webp') ||
         lower.endsWith('.gif');
+    final uploading = _uploadingDocumentField == uploadField;
 
     return Container(
       width: 110,
@@ -409,19 +432,55 @@ class _ProfileTabState extends State<ProfileTab> {
       ),
       child: Column(
         children: [
-          if (isImage && resolved != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                resolved,
-                height: 54,
-                width: 90,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _docFallback(),
+          Stack(
+            children: [
+              if (isImage && resolved != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    resolved,
+                    height: 54,
+                    width: 90,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => _docFallback(),
+                  ),
+                )
+              else
+                _docFallback(),
+              Positioned(
+                top: 2,
+                right: 2,
+                child: InkWell(
+                  onTap: uploading
+                      ? null
+                      : () => _pickAndUploadDocument(
+                            profile: profile,
+                            uploadField: uploadField,
+                            label: title,
+                            imageOnly: imageOnly,
+                          ),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    height: 20,
+                    width: 20,
+                    decoration: const BoxDecoration(
+                      color: AppColors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: uploading
+                        ? const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.8,
+                              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                            ),
+                          )
+                        : const Icon(Icons.edit_rounded, size: 13, color: AppColors.primary),
+                  ),
+                ),
               ),
-            )
-          else
-            _docFallback(),
+            ],
+          ),
           const SizedBox(height: 4),
           Text(
             title,
@@ -527,24 +586,115 @@ class _ProfileTabState extends State<ProfileTab> {
     return '${ApiConstants.publicBaseUrl}/$clean';
   }
 
+  String _toTitle(String key) {
+    final words = key.replaceAll('_', ' ').split(' ');
+    return words
+        .where((word) => word.trim().isNotEmpty)
+        .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+        .join(' ');
+  }
+
+  String _documentUploadField(String sourceKey) {
+    final key = sourceKey.toLowerCase().trim();
+    if (key == 'doctor_photo' || key == 'doctor_photo_url' || key.contains('photo')) {
+      return 'doctor_photo';
+    }
+    if (key == 'adhar_document' || key.contains('adhar') || key.contains('aadhar')) {
+      return 'adhar_document';
+    }
+    if (key == 'pan_document' || key.contains('pan')) {
+      return 'pan_document';
+    }
+    if (key == 'mmc_document' || key.contains('mmc')) {
+      return 'mmc_document';
+    }
+    if (key == 'clinic_registration_document' || key.contains('clinic_registration')) {
+      return 'clinic_registration_document';
+    }
+    return key;
+  }
+
+  Map<String, String> _profileFieldsPayload() {
+    return {
+      'first_name': _firstNameController.text.trim(),
+      'last_name': _lastNameController.text.trim(),
+      'clinic_name': _clinicNameController.text.trim(),
+      'degree': _degreeController.text.trim(),
+      'contact_number': _contactController.text.trim(),
+      'email': _emailController.text.trim(),
+      'adhar_number': _aadharController.text.trim(),
+      'pan_number': _panController.text.trim(),
+      'mmc_registration_number': _mmcController.text.trim(),
+      'clinic_registration_number': _clinicRegController.text.trim(),
+      'clinic_address': _clinicAddressController.text.trim(),
+      'village': _villageController.text.trim(),
+      'city': _cityController.text.trim(),
+      'taluka': _talukaController.text.trim(),
+      'district': _districtController.text.trim(),
+      'state': _stateController.text.trim(),
+      'pincode': _pincodeController.text.trim(),
+    };
+  }
+
+  Future<void> _pickAndUploadDocument({
+    required DoctorProfile profile,
+    required String uploadField,
+    required String label,
+    required bool imageOnly,
+  }) async {
+    if (_uploadingDocumentField != null || _isSaving) return;
+
+    final payload = _profileFieldsPayload();
+    if (payload.values.any((value) => value.isEmpty)) {
+      Get.snackbar('Missing Fields', 'Please complete doctor information before uploading documents.');
+      return;
+    }
+
+    final picked = await FilePicker.platform.pickFiles(
+      type: imageOnly ? FileType.image : FileType.custom,
+      allowedExtensions: imageOnly ? null : const ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+      withData: true,
+    );
+
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+    if ((file.path == null || file.path!.isEmpty) && (file.bytes == null || file.bytes!.isEmpty)) {
+      Get.snackbar('File Missing', 'Please choose a valid file.');
+      return;
+    }
+
+    setState(() {
+      _uploadingDocumentField = uploadField;
+    });
+
+    try {
+      await widget.controller.updateDoctorProfile(
+        fields: payload,
+        files: {uploadField: file},
+        successMessage: '$label uploaded successfully.',
+      );
+      await widget.controller.refreshProfile();
+      final latestProfile = widget.controller.profile.value;
+      if (latestProfile != null) {
+        _syncControllers(latestProfile);
+      } else {
+        _syncControllers(profile);
+      }
+    } catch (error) {
+      final message = error.toString().replaceFirst('Exception: ', '');
+      Get.snackbar('Upload Failed', message);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploadingDocumentField = null;
+        });
+      }
+    }
+  }
+
   Future<void> _saveProfile() async {
-    if (_firstNameController.text.trim().isEmpty ||
-        _lastNameController.text.trim().isEmpty ||
-        _clinicNameController.text.trim().isEmpty ||
-        _degreeController.text.trim().isEmpty ||
-        _contactController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty ||
-        _aadharController.text.trim().isEmpty ||
-        _panController.text.trim().isEmpty ||
-        _mmcController.text.trim().isEmpty ||
-        _clinicRegController.text.trim().isEmpty ||
-        _clinicAddressController.text.trim().isEmpty ||
-        _villageController.text.trim().isEmpty ||
-        _cityController.text.trim().isEmpty ||
-        _talukaController.text.trim().isEmpty ||
-        _districtController.text.trim().isEmpty ||
-        _stateController.text.trim().isEmpty ||
-        _pincodeController.text.trim().isEmpty) {
+    final payload = _profileFieldsPayload();
+    if (payload.values.any((value) => value.isEmpty)) {
       Get.snackbar('Missing Fields', 'Please fill all profile fields before saving.');
       return;
     }
@@ -555,25 +705,7 @@ class _ProfileTabState extends State<ProfileTab> {
 
     try {
       await widget.controller.updateDoctorProfile(
-        fields: {
-          'first_name': _firstNameController.text.trim(),
-          'last_name': _lastNameController.text.trim(),
-          'clinic_name': _clinicNameController.text.trim(),
-          'degree': _degreeController.text.trim(),
-          'contact_number': _contactController.text.trim(),
-          'email': _emailController.text.trim(),
-          'adhar_number': _aadharController.text.trim(),
-          'pan_number': _panController.text.trim(),
-          'mmc_registration_number': _mmcController.text.trim(),
-          'clinic_registration_number': _clinicRegController.text.trim(),
-          'clinic_address': _clinicAddressController.text.trim(),
-          'village': _villageController.text.trim(),
-          'city': _cityController.text.trim(),
-          'taluka': _talukaController.text.trim(),
-          'district': _districtController.text.trim(),
-          'state': _stateController.text.trim(),
-          'pincode': _pincodeController.text.trim(),
-        },
+        fields: payload,
       );
       setState(() {
         _isEditing = false;
