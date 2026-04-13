@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -26,6 +28,7 @@ class HomeController extends GetxController {
   final FirebaseMessagingService _firebaseMessagingService = FirebaseMessagingService();
 
   Timer? _profileSyncTimer;
+  Timer? _liveLocationTimer;
 
   @override
   void onInit() {
@@ -34,12 +37,14 @@ class HomeController extends GetxController {
     refreshAppointments();
     refreshSettings();
     _startRealtimeDoctorSync();
+    _startLiveLocationSync();
     initialiseNotifications();
   }
 
   @override
   void onClose() {
     _profileSyncTimer?.cancel();
+    _liveLocationTimer?.cancel();
     super.onClose();
   }
 
@@ -49,6 +54,13 @@ class HomeController extends GetxController {
       refreshProfile();
       refreshAppointments();
       refreshSettings();
+    });
+  }
+
+  void _startLiveLocationSync() {
+    _liveLocationTimer?.cancel();
+    _liveLocationTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      _pushLiveLocationForActiveAppointments();
     });
   }
 
@@ -118,7 +130,38 @@ class HomeController extends GetxController {
       }
     } finally {
       appointmentLoading.value = false;
+      _pushLiveLocationForActiveAppointments();
     }
+  }
+
+  Future<void> _pushLiveLocationForActiveAppointments() async {
+    final active = appointments.where((a) => a.canNavigate).toList();
+    if (active.isEmpty) return;
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      for (final appointment in active) {
+        await updateAppointmentLiveLocation(
+          appointment: appointment,
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        );
+      }
+    } catch (_) {}
   }
 
   List<String> _buildNotifications(DoctorProfile doctor) {
@@ -285,25 +328,218 @@ class HomeController extends GetxController {
     }
   }
 
-  Future<void> openNavigation(DoctorAppointment appointment) async {
-    Uri? uri;
-    if (appointment.latitude != null && appointment.longitude != null) {
-      uri = Uri.parse(
-        'https://www.google.com/maps/search/?api=1&query=${appointment.latitude},${appointment.longitude}',
-      );
-    } else if (appointment.address.trim().isNotEmpty) {
-      final query = Uri.encodeComponent(appointment.address.trim());
-      uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
-    }
 
-    if (uri == null) {
+  Future<void> verifyAppointmentOtp({
+    required DoctorAppointment appointment,
+    required String otp,
+  }) async {
+    debugPrint(
+      '[OTP][CTRL] verifyAppointmentOtp called: appointment=${appointment.id}, '
+      'status=${appointment.status}, otp=$otp',
+    );
+    try {
+      final response = await _apiService.verifyAppointmentOtp(
+        appointmentId: appointment.id,
+        otp: otp,
+      );
+      debugPrint('[OTP][CTRL] verifyAppointmentOtp response: $response');
+
+      final map = response['data'];
+      if (map is Map<String, dynamic>) {
+        _upsertAppointment(DoctorAppointment.fromJson(map));
+      } else {
+        _upsertAppointment(appointment.copyWith(otpVerifiedAt: DateTime.now()));
+      }
+
+      Get.snackbar('OTP Verified', response['message']?.toString() ?? 'OTP verified successfully.');
+    } catch (e) {
+      debugPrint('[OTP][CTRL] verifyAppointmentOtp error: $e');
+      Get.snackbar('OTP Failed', e.toString());
+    }
+  }
+
+  Future<bool> sendAppointmentOtp({
+    required DoctorAppointment appointment,
+    bool showSuccess = true,
+  }) async {
+    debugPrint(
+      '[OTP][CTRL] sendAppointmentOtp called: appointment=${appointment.id}, '
+      'status=${appointment.status}, farmerPhone=${appointment.farmerPhone}',
+    );
+    try {
+      final response = await _apiService.doctorDecision(
+        appointmentId: appointment.id,
+        action: 'approved',
+      );
+      debugPrint('[OTP][CTRL] sendAppointmentOtp response: $response');
+
+      final map = response['data'];
+      if (map is Map<String, dynamic>) {
+        _upsertAppointment(DoctorAppointment.fromJson(map));
+      } else {
+        _upsertAppointment(
+          appointment.copyWith(
+            status: 'approved',
+            otpVerifiedAt: null,
+          ),
+        );
+      }
+
+      if (showSuccess) {
+        Get.snackbar(
+          'OTP Sent',
+          response['message']?.toString() ?? 'OTP sent to farmer successfully.',
+        );
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[OTP][CTRL] sendAppointmentOtp error: $e');
+      Get.snackbar('OTP Send Failed', e.toString());
+      return false;
+    }
+  }
+
+  Future<void> startAppointmentTreatment({
+    required DoctorAppointment appointment,
+    String? notes,
+  }) async {
+    try {
+      final response = await _apiService.startTreatment(
+        appointmentId: appointment.id,
+        notes: notes,
+      );
+
+      final map = response['data'];
+      if (map is Map<String, dynamic>) {
+        _upsertAppointment(DoctorAppointment.fromJson(map));
+      } else {
+        _upsertAppointment(
+          appointment.copyWith(
+            status: 'in_progress',
+            treatmentStartedAt: DateTime.now(),
+          ),
+        );
+      }
+
+      Get.snackbar('Treatment Started', response['message']?.toString() ?? 'Treatment started successfully.');
+    } catch (e) {
+      Get.snackbar('Start Failed', e.toString());
+    }
+  }
+
+  Future<void> saveAppointmentTreatment({
+    required DoctorAppointment appointment,
+    required String treatmentDetails,
+    bool followupRequired = false,
+    DateTime? nextFollowupDate,
+    String? notes,
+  }) async {
+    try {
+      final response = await _apiService.saveTreatment(
+        appointmentId: appointment.id,
+        treatmentDetails: treatmentDetails,
+        followupRequired: followupRequired,
+        nextFollowupDate: nextFollowupDate,
+        notes: notes,
+      );
+
+      final map = response['data'];
+      if (map is Map<String, dynamic>) {
+        _upsertAppointment(DoctorAppointment.fromJson(map));
+      } else {
+        _upsertAppointment(
+          appointment.copyWith(
+            treatmentDetails: treatmentDetails,
+            followupRequired: followupRequired,
+            nextFollowupDate: nextFollowupDate,
+            notes: notes ?? appointment.notes,
+          ),
+        );
+      }
+
+      Get.snackbar('Treatment Saved', response['message']?.toString() ?? 'Treatment details saved successfully.');
+    } catch (e) {
+      Get.snackbar('Save Failed', e.toString());
+    }
+  }
+
+  Future<void> updateAppointmentLiveLocation({
+    required DoctorAppointment appointment,
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      await _apiService.updateLiveLocation(
+        appointmentId: appointment.id,
+        latitude: latitude,
+        longitude: longitude,
+      );
+
+      _upsertAppointment(
+        appointment.copyWith(
+          doctorLiveLatitude: latitude,
+          doctorLiveLongitude: longitude,
+          doctorLiveUpdatedAt: DateTime.now(),
+        ),
+      );
+    } catch (_) {}
+  }
+  Future<void> openNavigation(DoctorAppointment appointment) async {
+    final hasLatLng = appointment.latitude != null && appointment.longitude != null;
+    final hasAddress = appointment.address.trim().isNotEmpty;
+    if (!hasLatLng && !hasAddress) {
       Get.snackbar('Location Missing', 'Farmer location is not available for navigation.');
       return;
     }
 
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!launched) {
+    final targets = <Uri>[];
+    if (hasLatLng) {
+      final lat = appointment.latitude!;
+      final lng = appointment.longitude!;
+      final query = '$lat,$lng';
+      targets.add(Uri.parse('comgooglemaps://?q=$query'));
+      targets.add(Uri.parse('geo:$query?q=$query'));
+      targets.add(Uri.parse('https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}'));
+    }
+
+    if (hasAddress) {
+      final address = appointment.address.trim();
+      final encoded = Uri.encodeComponent(address);
+      targets.add(Uri.parse('comgooglemaps://?q=$encoded'));
+      targets.add(Uri.parse('geo:0,0?q=$encoded'));
+      targets.add(Uri.parse('https://www.google.com/maps/search/?api=1&query=$encoded'));
+    }
+
+    for (final uri in targets) {
+      final launched = await _tryLaunchUri(uri);
+      if (launched) return;
+    }
+
+    if (hasAddress) {
+      final encoded = Uri.encodeComponent(appointment.address.trim());
+      final browserFallback = Uri.parse('https://maps.google.com/?q=$encoded');
+      final launched = await _tryLaunchUri(browserFallback);
+      if (launched) return;
+    }
+
+    if (hasLatLng) {
+      final lat = appointment.latitude!;
+      final lng = appointment.longitude!;
+      final browserFallback = Uri.parse('https://maps.google.com/?q=$lat,$lng');
+      final launched = await _tryLaunchUri(browserFallback);
+      if (launched) return;
+    }
+
+    if (!isClosed) {
       Get.snackbar('Navigation Error', 'Unable to open Google Maps.');
+    }
+  }
+
+  Future<bool> _tryLaunchUri(Uri uri) async {
+    try {
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
     }
   }
 
@@ -351,7 +587,9 @@ class HomeController extends GetxController {
 
   Future<void> logout() async {
     _profileSyncTimer?.cancel();
+    _liveLocationTimer?.cancel();
     await SessionService.logout();
     Get.offAllNamed(AppRoutes.login);
   }
 }
+

@@ -93,6 +93,33 @@ class VisitsTab extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
                               ),
+                              if (item.diseaseNames.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                _detailRow('Disease', item.diseaseNames.join(', ')),
+                              ],
+                              if (item.diseaseDetails.trim().isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                _detailRow('Disease Details', item.diseaseDetails),
+                              ],
+                              if (item.treatmentDetails.trim().isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                _detailRow('Treatment', item.treatmentDetails),
+                              ],
+                              if (item.notes.trim().isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                _detailRow('Notes', item.notes),
+                              ],
+                              if (item.nextFollowupDate != null) ...[
+                                const SizedBox(height: 2),
+                                _detailRow(
+                                  'Next Follow-up',
+                                  DateFormat('dd MMM yyyy').format(item.nextFollowupDate!.toLocal()),
+                                ),
+                              ],
+                              if (item.charges != null) ...[
+                                const SizedBox(height: 2),
+                                _detailRow('Charges', '₹ ${item.charges!.toStringAsFixed(0)}'),
+                              ],
                               const SizedBox(height: 6),
                               Text(
                                 completedAt == null
@@ -151,6 +178,14 @@ class VisitsTab extends StatelessWidget {
       width: 72,
       color: const Color(0xFFE4EFE4),
       child: const Icon(Icons.pets_rounded, color: AppColors.grey),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Text(
+      '$label: $value',
+      softWrap: true,
+      style: const TextStyle(fontSize: 12, color: AppColors.grey),
     );
   }
 }

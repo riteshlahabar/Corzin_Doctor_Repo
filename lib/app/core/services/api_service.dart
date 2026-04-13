@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../constants/api_constants.dart';
@@ -221,6 +222,10 @@ class ApiService {
     DateTime? scheduledAt,
     double? charges,
   }) async {
+    debugPrint(
+      '[OTP][API] POST doctor-decision appointment=$appointmentId action=$action '
+      'scheduledAt=$scheduledAt charges=$charges',
+    );
     final response = await _client.post(
       Uri.parse('${ApiConstants.baseUrl}/doctor/appointments/$appointmentId/doctor-decision'),
       headers: {'Accept': 'application/json'},
@@ -230,9 +235,74 @@ class ApiService {
         if (charges != null) 'charges': charges.toStringAsFixed(2),
       },
     );
+    debugPrint('[OTP][API] doctor-decision status=${response.statusCode} body=${response.body}');
     return _parseResponse(response);
   }
 
+
+  Future<Map<String, dynamic>> verifyAppointmentOtp({
+    required int appointmentId,
+    required String otp,
+  }) async {
+    debugPrint('[OTP][API] POST verify-otp appointment=$appointmentId otp=$otp');
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/appointments/$appointmentId/verify-otp'),
+      headers: {'Accept': 'application/json'},
+      body: {'otp': otp.trim()},
+    );
+    debugPrint('[OTP][API] verify-otp status=${response.statusCode} body=${response.body}');
+    return _parseResponse(response);
+  }
+
+  Future<Map<String, dynamic>> startTreatment({
+    required int appointmentId,
+    String? notes,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/appointments/$appointmentId/start-treatment'),
+      headers: {'Accept': 'application/json'},
+      body: {
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      },
+    );
+    return _parseResponse(response);
+  }
+
+  Future<Map<String, dynamic>> saveTreatment({
+    required int appointmentId,
+    required String treatmentDetails,
+    bool? followupRequired,
+    DateTime? nextFollowupDate,
+    String? notes,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/appointments/$appointmentId/treatment'),
+      headers: {'Accept': 'application/json'},
+      body: {
+        'treatment_details': treatmentDetails.trim(),
+        if (followupRequired != null) 'followup_required': followupRequired ? '1' : '0',
+        if (nextFollowupDate != null) 'next_followup_date': nextFollowupDate.toIso8601String(),
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      },
+    );
+    return _parseResponse(response);
+  }
+
+  Future<Map<String, dynamic>> updateLiveLocation({
+    required int appointmentId,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/appointments/$appointmentId/live-location'),
+      headers: {'Accept': 'application/json'},
+      body: {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+      },
+    );
+    return _parseResponse(response);
+  }
   Map<String, dynamic> _parseResponse(http.Response response) {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -241,3 +311,4 @@ class ApiService {
     throw Exception(body['message'] ?? 'Request failed');
   }
 }
+

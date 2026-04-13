@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 
+import '../../core/services/session_service.dart';
 import '../../routes/app_pages.dart';
 
 class SplashController extends GetxController {
@@ -8,7 +9,9 @@ class SplashController extends GetxController {
     super.onInit();
     Future.delayed(const Duration(seconds: 5), () {
       if (isClosed) return;
-      Get.offAllNamed(AppRoutes.login);
+      Get.offAllNamed(
+        SessionService.isLoggedIn ? AppRoutes.home : AppRoutes.login,
+      );
     });
   }
 }

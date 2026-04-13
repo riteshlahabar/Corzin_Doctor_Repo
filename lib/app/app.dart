@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'core/services/session_service.dart';
 import 'core/theme/app_theme.dart';
 import 'routes/app_pages.dart';
 
@@ -13,7 +14,7 @@ class CorzinDoctorApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Corzin Doctor',
       theme: AppTheme.light(),
-      initialRoute: AppRoutes.splash,
+      initialRoute: SessionService.isLoggedIn ? AppRoutes.home : AppRoutes.login,
       getPages: AppPages.pages,
     );
   }
