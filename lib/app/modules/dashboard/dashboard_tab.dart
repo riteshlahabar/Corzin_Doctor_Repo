@@ -118,18 +118,48 @@ class _DashboardTabState extends State<DashboardTab> {
                       ),
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () => widget.controller.selectedIndex.value = 2,
-                    child: Container(
-                      height: 32,
-                      width: 32,
-                      decoration: BoxDecoration(
-                        color: AppColors.white.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.notifications_none_rounded, color: AppColors.white, size: 18),
-                    ),
-                  ),
+                  Obx(() {
+                    final count = widget.controller.notificationHistory.length;
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        GestureDetector(
+                          onTap: _openNotificationSheet,
+                          child: Container(
+                            height: 32,
+                            width: 32,
+                            decoration: BoxDecoration(
+                              color: AppColors.white.withValues(alpha: 0.22),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.notifications_none_rounded, color: AppColors.white, size: 18),
+                          ),
+                        ),
+                        if (count > 0)
+                          Positioned(
+                            right: -4,
+                            top: -4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE53935),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              constraints: const BoxConstraints(minWidth: 16),
+                              child: Text(
+                                count > 99 ? '99+' : '$count',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: AppColors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  }),
                 ],
               ),
             ),
@@ -310,6 +340,92 @@ class _DashboardTabState extends State<DashboardTab> {
         ),
       );
     });
+  }
+
+  void _openNotificationSheet() {
+    Get.bottomSheet(
+      SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Notifications',
+                        style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await widget.controller.clearNotificationHistory();
+                      },
+                      child: const Text('Clear'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Obx(() {
+                if (widget.controller.notificationHistory.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(18),
+                    child: Text('No notifications yet.'),
+                  );
+                }
+
+                return SizedBox(
+                  height: Get.height * 0.52,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: widget.controller.notificationHistory.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (_, index) {
+                      final item = widget.controller.notificationHistory[index];
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF4FAF4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE4EFE4)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.title,
+                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              item.body,
+                              style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              DateFormat('dd MMM yyyy, hh:mm a').format(item.createdAt.toLocal()),
+                              style: const TextStyle(fontSize: 11.5, color: AppColors.grey),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
   }
 
   List<DoctorAppointment> _demoAppointments() {

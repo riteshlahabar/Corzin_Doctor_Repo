@@ -10,6 +10,37 @@ import 'register_controller.dart';
 class RegisterView extends GetView<RegisterController> {
   const RegisterView({super.key});
 
+  static const List<String> _states = [
+    'Andhra Pradesh',
+    'Arunachal Pradesh',
+    'Assam',
+    'Bihar',
+    'Chhattisgarh',
+    'Goa',
+    'Gujarat',
+    'Haryana',
+    'Himachal Pradesh',
+    'Jharkhand',
+    'Karnataka',
+    'Kerala',
+    'Madhya Pradesh',
+    'Maharashtra',
+    'Manipur',
+    'Meghalaya',
+    'Mizoram',
+    'Nagaland',
+    'Odisha',
+    'Punjab',
+    'Rajasthan',
+    'Sikkim',
+    'Tamil Nadu',
+    'Telangana',
+    'Tripura',
+    'Uttar Pradesh',
+    'Uttarakhand',
+    'West Bengal',
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -139,11 +170,7 @@ class RegisterView extends GetView<RegisterController> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                DoctorTextField(
-                  controller: controller.stateController,
-                  label: 'State',
-                  validator: (value) => controller.requiredValidator(value, 'State'),
-                ),
+                _stateDropdownField(),
                 const SizedBox(height: 14),
                 DoctorTextField(
                   controller: controller.pincodeController,
@@ -158,9 +185,15 @@ class RegisterView extends GetView<RegisterController> {
                   () => Column(
                     children: [
                       DocumentPickerTile(
-                        title: 'Aadhar Attachment',
-                        fileName: controller.files['adhar_document']?.name,
-                        onTap: () => controller.pickFile('adhar_document'),
+                        title: 'Aadhar Front Attachment',
+                        fileName: controller.files['adhar_document_front']?.name,
+                        onTap: () => controller.pickFile('adhar_document_front'),
+                      ),
+                      const SizedBox(height: 12),
+                      DocumentPickerTile(
+                        title: 'Aadhar Back Attachment',
+                        fileName: controller.files['adhar_document_back']?.name,
+                        onTap: () => controller.pickFile('adhar_document_back'),
                       ),
                       const SizedBox(height: 12),
                       DocumentPickerTile(
@@ -283,6 +316,44 @@ class RegisterView extends GetView<RegisterController> {
         const SizedBox(width: 14),
         Expanded(child: right),
       ],
+    );
+  }
+
+  Widget _stateDropdownField() {
+    return DropdownButtonFormField<String>(
+      initialValue: controller.stateController.text.trim().isEmpty
+          ? 'Maharashtra'
+          : controller.stateController.text.trim(),
+      decoration: InputDecoration(
+        labelText: 'State',
+        filled: true,
+        fillColor: AppColors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.line),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.3),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      ),
+      items: _states
+          .map(
+            (state) => DropdownMenuItem<String>(
+              value: state,
+              child: Text(state),
+            ),
+          )
+          .toList(),
+      onChanged: (value) {
+        controller.stateController.text = value ?? 'Maharashtra';
+      },
+      validator: (value) => controller.requiredValidator(value, 'State'),
     );
   }
 }

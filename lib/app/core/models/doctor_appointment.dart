@@ -26,6 +26,11 @@ class DoctorAppointment {
     this.followupRequired = false,
     this.nextFollowupDate,
     this.visitOtp = '',
+    this.appointmentCode = '',
+    this.previousHistories = const [],
+    this.recentMilkHistory = const [],
+    this.recentFeedingHistory = const [],
+    this.recentPregnancyHistory = const [],
   });
 
   final int id;
@@ -54,8 +59,19 @@ class DoctorAppointment {
   final bool followupRequired;
   final DateTime? nextFollowupDate;
   final String visitOtp;
+  final String appointmentCode;
+  final List<DoctorAppointmentHistory> previousHistories;
+  final List<DoctorAppointmentMilkHistory> recentMilkHistory;
+  final List<DoctorAppointmentFeedingHistory> recentFeedingHistory;
+  final List<DoctorAppointmentPregnancyHistory> recentPregnancyHistory;
 
   String get normalizedStatus => status.trim().toLowerCase();
+
+  String get displayAppointmentCode {
+    final code = appointmentCode.trim();
+    if (code.isNotEmpty) return code;
+    return 'C/APP/${id.toString().padLeft(2, '0')}';
+  }
 
   String get statusLabel {
     switch (normalizedStatus) {
@@ -67,7 +83,7 @@ class DoctorAppointment {
       case 'new':
         return 'Pending';
       case 'rescheduled':
-        return 'Rescheduled';
+        return 'Accept';
       case 'declined':
       case 'rejected':
         return 'Declined';
@@ -78,7 +94,7 @@ class DoctorAppointment {
       case 'approved':
       case 'farmer_approved':
       case 'scheduled':
-        return 'Approved';
+        return 'Accept';
       case 'in_progress':
         return 'In Progress';
       case 'completed':
@@ -99,7 +115,7 @@ class DoctorAppointment {
   }
 
   bool get canNavigate {
-    return {'approved', 'farmer_approved', 'scheduled', 'in_progress', 'rescheduled', 'followup', 'follow_up'}
+    return {'approved', 'farmer_approved', 'scheduled', 'in_progress', 'followup', 'follow_up'}
         .contains(normalizedStatus);
   }
 
@@ -108,11 +124,11 @@ class DoctorAppointment {
   }
 
   bool get needsOtpVerification {
-    return {'approved', 'farmer_approved', 'scheduled', 'rescheduled'}.contains(normalizedStatus) && otpVerifiedAt == null;
+    return {'approved', 'farmer_approved', 'scheduled'}.contains(normalizedStatus) && otpVerifiedAt == null;
   }
 
   bool get canStartTreatment {
-    return {'approved', 'farmer_approved', 'scheduled', 'rescheduled'}.contains(normalizedStatus) && otpVerifiedAt != null;
+    return {'approved', 'farmer_approved', 'scheduled'}.contains(normalizedStatus) && otpVerifiedAt != null;
   }
 
   DoctorAppointment copyWith({
@@ -142,6 +158,11 @@ class DoctorAppointment {
     bool? followupRequired,
     DateTime? nextFollowupDate,
     String? visitOtp,
+    String? appointmentCode,
+    List<DoctorAppointmentHistory>? previousHistories,
+    List<DoctorAppointmentMilkHistory>? recentMilkHistory,
+    List<DoctorAppointmentFeedingHistory>? recentFeedingHistory,
+    List<DoctorAppointmentPregnancyHistory>? recentPregnancyHistory,
   }) {
     return DoctorAppointment(
       id: id ?? this.id,
@@ -170,6 +191,11 @@ class DoctorAppointment {
       followupRequired: followupRequired ?? this.followupRequired,
       nextFollowupDate: nextFollowupDate ?? this.nextFollowupDate,
       visitOtp: visitOtp ?? this.visitOtp,
+      appointmentCode: appointmentCode ?? this.appointmentCode,
+      previousHistories: previousHistories ?? this.previousHistories,
+      recentMilkHistory: recentMilkHistory ?? this.recentMilkHistory,
+      recentFeedingHistory: recentFeedingHistory ?? this.recentFeedingHistory,
+      recentPregnancyHistory: recentPregnancyHistory ?? this.recentPregnancyHistory,
     );
   }
 
@@ -206,6 +232,70 @@ class DoctorAppointment {
       }
     }
 
+    final previousHistories = <DoctorAppointmentHistory>[];
+    final rawHistories = json['previous_histories'];
+    if (rawHistories is List) {
+      for (final row in rawHistories) {
+        if (row is Map<String, dynamic>) {
+          previousHistories.add(DoctorAppointmentHistory.fromJson(row));
+        } else if (row is Map) {
+          previousHistories.add(
+            DoctorAppointmentHistory.fromJson(
+              row.map((key, value) => MapEntry(key.toString(), value)),
+            ),
+          );
+        }
+      }
+    }
+
+    final recentMilkHistory = <DoctorAppointmentMilkHistory>[];
+    final rawMilk = json['recent_milk_history'];
+    if (rawMilk is List) {
+      for (final row in rawMilk) {
+        if (row is Map<String, dynamic>) {
+          recentMilkHistory.add(DoctorAppointmentMilkHistory.fromJson(row));
+        } else if (row is Map) {
+          recentMilkHistory.add(
+            DoctorAppointmentMilkHistory.fromJson(
+              row.map((key, value) => MapEntry(key.toString(), value)),
+            ),
+          );
+        }
+      }
+    }
+
+    final recentFeedingHistory = <DoctorAppointmentFeedingHistory>[];
+    final rawFeeding = json['recent_feeding_history'];
+    if (rawFeeding is List) {
+      for (final row in rawFeeding) {
+        if (row is Map<String, dynamic>) {
+          recentFeedingHistory.add(DoctorAppointmentFeedingHistory.fromJson(row));
+        } else if (row is Map) {
+          recentFeedingHistory.add(
+            DoctorAppointmentFeedingHistory.fromJson(
+              row.map((key, value) => MapEntry(key.toString(), value)),
+            ),
+          );
+        }
+      }
+    }
+
+    final recentPregnancyHistory = <DoctorAppointmentPregnancyHistory>[];
+    final rawPregnancy = json['recent_pregnancy_history'];
+    if (rawPregnancy is List) {
+      for (final row in rawPregnancy) {
+        if (row is Map<String, dynamic>) {
+          recentPregnancyHistory.add(DoctorAppointmentPregnancyHistory.fromJson(row));
+        } else if (row is Map) {
+          recentPregnancyHistory.add(
+            DoctorAppointmentPregnancyHistory.fromJson(
+              row.map((key, value) => MapEntry(key.toString(), value)),
+            ),
+          );
+        }
+      }
+    }
+
     return DoctorAppointment(
       id: parseInt(json['id']),
       farmerName: (json['farmer_name'] ?? json['farmerName'] ?? '').toString(),
@@ -233,6 +323,164 @@ class DoctorAppointment {
       followupRequired: json['followup_required'] == true || json['followup_required'].toString() == '1',
       nextFollowupDate: parseDate(json['next_followup_date']),
       visitOtp: (json['visit_otp'] ?? '').toString(),
+      appointmentCode: (json['appointment_code'] ?? '').toString(),
+      previousHistories: previousHistories,
+      recentMilkHistory: recentMilkHistory,
+      recentFeedingHistory: recentFeedingHistory,
+      recentPregnancyHistory: recentPregnancyHistory,
+    );
+  }
+}
+
+class DoctorAppointmentHistory {
+  DoctorAppointmentHistory({
+    required this.id,
+    required this.concern,
+    required this.treatmentDetails,
+    required this.onsiteTreatment,
+    required this.notes,
+    this.completedAt,
+  });
+
+  final int id;
+  final String concern;
+  final String treatmentDetails;
+  final String onsiteTreatment;
+  final String notes;
+  final DateTime? completedAt;
+
+  factory DoctorAppointmentHistory.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic value) {
+      if (value == null) return null;
+      final raw = value.toString().trim();
+      if (raw.isEmpty) return null;
+      return DateTime.tryParse(raw);
+    }
+
+    int parseInt(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      return int.tryParse(value.toString()) ?? 0;
+    }
+
+    return DoctorAppointmentHistory(
+      id: parseInt(json['id']),
+      concern: (json['concern'] ?? '').toString(),
+      treatmentDetails: (json['treatment_details'] ?? '').toString(),
+      onsiteTreatment: (json['onsite_treatment'] ?? '').toString(),
+      notes: (json['notes'] ?? '').toString(),
+      completedAt: parseDate(json['completed_at']),
+    );
+  }
+}
+
+class DoctorAppointmentMilkHistory {
+  DoctorAppointmentMilkHistory({
+    required this.date,
+    this.totalMilk,
+    this.fat,
+    this.snf,
+  });
+
+  final DateTime? date;
+  final double? totalMilk;
+  final double? fat;
+  final double? snf;
+
+  factory DoctorAppointmentMilkHistory.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic value) {
+      if (value == null) return null;
+      final raw = value.toString().trim();
+      if (raw.isEmpty) return null;
+      return DateTime.tryParse(raw);
+    }
+
+    double? parseDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      return double.tryParse(value.toString());
+    }
+
+    return DoctorAppointmentMilkHistory(
+      date: parseDate(json['date']),
+      totalMilk: parseDouble(json['total_milk']),
+      fat: parseDouble(json['fat']),
+      snf: parseDouble(json['snf']),
+    );
+  }
+}
+
+class DoctorAppointmentFeedingHistory {
+  DoctorAppointmentFeedingHistory({
+    required this.date,
+    required this.feedingTime,
+    required this.feedType,
+    this.quantity,
+    this.unit = '',
+    this.notes = '',
+  });
+
+  final DateTime? date;
+  final String feedingTime;
+  final String feedType;
+  final double? quantity;
+  final String unit;
+  final String notes;
+
+  factory DoctorAppointmentFeedingHistory.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic value) {
+      if (value == null) return null;
+      final raw = value.toString().trim();
+      if (raw.isEmpty) return null;
+      return DateTime.tryParse(raw);
+    }
+
+    double? parseDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      return double.tryParse(value.toString());
+    }
+
+    return DoctorAppointmentFeedingHistory(
+      date: parseDate(json['date']),
+      feedingTime: (json['feeding_time'] ?? '').toString(),
+      feedType: (json['feed_type'] ?? '').toString(),
+      quantity: parseDouble(json['quantity']),
+      unit: (json['unit'] ?? '').toString(),
+      notes: (json['notes'] ?? '').toString(),
+    );
+  }
+}
+
+class DoctorAppointmentPregnancyHistory {
+  DoctorAppointmentPregnancyHistory({
+    this.aiDate,
+    this.calvingDate,
+    required this.pregnancyConfirmation,
+    this.breedName = '',
+    this.notes = '',
+  });
+
+  final DateTime? aiDate;
+  final DateTime? calvingDate;
+  final bool pregnancyConfirmation;
+  final String breedName;
+  final String notes;
+
+  factory DoctorAppointmentPregnancyHistory.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic value) {
+      if (value == null) return null;
+      final raw = value.toString().trim();
+      if (raw.isEmpty) return null;
+      return DateTime.tryParse(raw);
+    }
+
+    return DoctorAppointmentPregnancyHistory(
+      aiDate: parseDate(json['ai_date']),
+      calvingDate: parseDate(json['calving_date']),
+      pregnancyConfirmation: json['pregnancy_confirmation'] == true || json['pregnancy_confirmation'].toString() == '1',
+      breedName: (json['breed_name'] ?? '').toString(),
+      notes: (json['notes'] ?? '').toString(),
     );
   }
 }

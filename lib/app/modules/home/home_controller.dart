@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/doctor_appointment.dart';
@@ -21,6 +23,7 @@ class HomeController extends GetxController {
   final loading = false.obs;
   final appointmentLoading = false.obs;
   final notifications = <String>[].obs;
+  final notificationHistory = <DoctorNotificationItem>[].obs;
   final appointments = <DoctorAppointment>[].obs;
   final banners = <DoctorBannerItem>[].obs;
   final appSettings = Rxn<DoctorSettings>();
@@ -29,10 +32,12 @@ class HomeController extends GetxController {
 
   Timer? _profileSyncTimer;
   Timer? _liveLocationTimer;
+  int? _loadedNotificationDoctorId;
 
   @override
   void onInit() {
     super.onInit();
+    _loadNotificationHistory();
     refreshProfile();
     refreshAppointments();
     refreshSettings();
@@ -52,7 +57,6 @@ class HomeController extends GetxController {
     _profileSyncTimer?.cancel();
     _profileSyncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       refreshProfile();
-      refreshAppointments();
       refreshSettings();
     });
   }
@@ -84,6 +88,7 @@ class HomeController extends GetxController {
       final freshProfile = await _apiService.fetchProfile(current.id);
       profile.value = freshProfile;
       await SessionService.saveProfile(freshProfile);
+      await _ensureNotificationHistoryLoadedForDoctor(freshProfile.id);
       notifications.assignAll(_buildNotifications(freshProfile));
     } catch (_) {
       notifications.assignAll(_buildNotifications(current));
@@ -109,6 +114,7 @@ class HomeController extends GetxController {
       );
       profile.value = updated;
       await SessionService.saveProfile(updated);
+      await _ensureNotificationHistoryLoadedForDoctor(updated.id);
       notifications.assignAll(_buildNotifications(updated));
       Get.snackbar('Profile Updated', successMessage);
     } finally {
@@ -220,6 +226,10 @@ class HomeController extends GetxController {
     if (lines.isEmpty) return;
 
     notifications.insert(0, lines.join(': '));
+    _addNotificationEntry(
+      title: title ?? 'Notification',
+      body: body?.isNotEmpty == true ? body! : 'You have a new update.',
+    );
 
     Get.snackbar(
       title ?? 'Notification',
@@ -553,6 +563,91 @@ class HomeController extends GetxController {
     appointments.refresh();
   }
 
+  Future<void> clearNotificationHistory() async {
+    notificationHistory.clear();
+    await _saveNotificationHistory();
+  }
+
+  Future<void> _ensureNotificationHistoryLoadedForDoctor(int doctorId) async {
+    if (_loadedNotificationDoctorId == doctorId) return;
+    await _loadNotificationHistory(doctorId: doctorId);
+  }
+
+  Future<void> _loadNotificationHistory({int? doctorId}) async {
+    final resolvedDoctorId = doctorId ?? profile.value?.id ?? SessionService.profile?.id ?? 0;
+    if (resolvedDoctorId <= 0) {
+      notificationHistory.clear();
+      _loadedNotificationDoctorId = null;
+      return;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_notificationStoreKey(resolvedDoctorId));
+      if (raw == null || raw.trim().isEmpty) {
+        notificationHistory.clear();
+        _loadedNotificationDoctorId = resolvedDoctorId;
+        return;
+      }
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        notificationHistory.clear();
+        _loadedNotificationDoctorId = resolvedDoctorId;
+        return;
+      }
+
+      notificationHistory.assignAll(
+        decoded
+            .whereType<Map>()
+            .map((row) => row.map((k, v) => MapEntry(k.toString(), v)))
+            .map(DoctorNotificationItem.fromJson)
+            .toList(),
+      );
+      _loadedNotificationDoctorId = resolvedDoctorId;
+    } catch (_) {
+      notificationHistory.clear();
+      _loadedNotificationDoctorId = resolvedDoctorId;
+    }
+  }
+
+  Future<void> _saveNotificationHistory() async {
+    final resolvedDoctorId = profile.value?.id ?? SessionService.profile?.id ?? _loadedNotificationDoctorId ?? 0;
+    if (resolvedDoctorId <= 0) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final payload = notificationHistory.map((item) => item.toJson()).toList();
+      await prefs.setString(_notificationStoreKey(resolvedDoctorId), jsonEncode(payload));
+      _loadedNotificationDoctorId = resolvedDoctorId;
+    } catch (_) {}
+  }
+
+  void _addNotificationEntry({
+    required String title,
+    required String body,
+  }) {
+    final cleanTitle = title.trim().isEmpty ? 'Notification' : title.trim();
+    final cleanBody = body.trim().isEmpty ? 'You have a new update.' : body.trim();
+
+    notificationHistory.insert(
+      0,
+      DoctorNotificationItem(
+        title: cleanTitle,
+        body: cleanBody,
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    if (notificationHistory.length > 100) {
+      notificationHistory.removeRange(100, notificationHistory.length);
+    }
+
+    _saveNotificationHistory();
+  }
+
+  String _notificationStoreKey(int doctorId) => 'doctor_notification_history_$doctorId';
+
   List<DoctorAppointment> _fallbackAppointments() {
     final now = DateTime.now();
     return [
@@ -590,6 +685,37 @@ class HomeController extends GetxController {
     _liveLocationTimer?.cancel();
     await SessionService.logout();
     Get.offAllNamed(AppRoutes.login);
+  }
+}
+
+class DoctorNotificationItem {
+  DoctorNotificationItem({
+    required this.title,
+    required this.body,
+    required this.createdAt,
+  });
+
+  final String title;
+  final String body;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'body': body,
+      'created_at': createdAt.toIso8601String(),
+    };
+  }
+
+  factory DoctorNotificationItem.fromJson(Map<String, dynamic> json) {
+    final rawTime = (json['created_at'] ?? '').toString().trim();
+    final parsedTime = DateTime.tryParse(rawTime) ?? DateTime.now();
+
+    return DoctorNotificationItem(
+      title: (json['title'] ?? 'Notification').toString(),
+      body: (json['body'] ?? '').toString(),
+      createdAt: parsedTime,
+    );
   }
 }
 

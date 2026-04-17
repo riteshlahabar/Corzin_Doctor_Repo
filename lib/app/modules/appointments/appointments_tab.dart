@@ -57,7 +57,6 @@ class AppointmentsTab extends StatelessWidget {
                   appointment: item,
                   onApprove: () => controller.approveAppointment(item),
                   onDecline: () => controller.declineAppointment(item),
-                  onReschedule: () => _openRescheduleSheet(context, item),
                   onMap: () => controller.openNavigation(item),
                   onVerifyOtp: () => _openOtpSheet(context, item),
                   onStartTreatment: () => controller.startAppointmentTreatment(appointment: item),
@@ -486,118 +485,6 @@ class AppointmentsTab extends StatelessWidget {
     notesController.dispose();
   }
 
-  Future<void> _openRescheduleSheet(BuildContext context, DoctorAppointment appointment) async {
-    DateTime selectedDate = appointment.scheduledAt?.toLocal() ?? DateTime.now().add(const Duration(hours: 2));
-    TimeOfDay selectedTime = TimeOfDay.fromDateTime(selectedDate);
-    final amountController = TextEditingController(text: (appointment.charges ?? 500).toStringAsFixed(0));
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(sheetContext).viewInsets.bottom + 16),
-          child: StatefulBuilder(
-            builder: (context, setState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Reschedule Appointment',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.calendar_today_rounded),
-                    title: Text(DateFormat('dd MMM yyyy').format(selectedDate)),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: selectedDate,
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          selectedDate = DateTime(
-                            picked.year,
-                            picked.month,
-                            picked.day,
-                            selectedTime.hour,
-                            selectedTime.minute,
-                          );
-                        });
-                      }
-                    },
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.access_time_rounded),
-                    title: Text(selectedTime.format(context)),
-                    onTap: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: selectedTime,
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          selectedTime = picked;
-                          selectedDate = DateTime(
-                            selectedDate.year,
-                            selectedDate.month,
-                            selectedDate.day,
-                            picked.hour,
-                            picked.minute,
-                          );
-                        });
-                      }
-                    },
-                  ),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Charges',
-                      prefixText: 'Rs ',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        final charge = double.tryParse(amountController.text.trim()) ?? 0;
-                        if (charge <= 0) {
-                          Get.snackbar('Invalid Amount', 'Enter a valid charge amount.');
-                          return;
-                        }
-                        Navigator.of(sheetContext).pop();
-                        await controller.rescheduleAppointment(
-                          appointment: appointment,
-                          scheduledAt: selectedDate,
-                          charges: charge,
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.white,
-                      ),
-                      child: const Text('Save Reschedule'),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
 }
 
 class _AppointmentCard extends StatelessWidget {
@@ -605,7 +492,6 @@ class _AppointmentCard extends StatelessWidget {
     required this.appointment,
     required this.onApprove,
     required this.onDecline,
-    required this.onReschedule,
     required this.onMap,
     required this.onVerifyOtp,
     required this.onStartTreatment,
@@ -616,7 +502,6 @@ class _AppointmentCard extends StatelessWidget {
   final DoctorAppointment appointment;
   final VoidCallback onApprove;
   final VoidCallback onDecline;
-  final VoidCallback onReschedule;
   final VoidCallback onMap;
   final VoidCallback onVerifyOtp;
   final VoidCallback onStartTreatment;
@@ -630,6 +515,14 @@ class _AppointmentCard extends StatelessWidget {
     final showActionButtons = appointment.canFixAppointment;
     final waitingApproval = appointment.waitingForFarmerApproval;
     final canNavigate = appointment.canNavigate;
+    final showPreviousHistory = appointment.otpVerifiedAt != null &&
+        appointment.normalizedStatus != 'completed' &&
+        appointment.previousHistories.isNotEmpty;
+    final showCowHealthHistory = appointment.otpVerifiedAt != null &&
+        appointment.normalizedStatus != 'completed' &&
+        (appointment.recentMilkHistory.isNotEmpty ||
+            appointment.recentFeedingHistory.isNotEmpty ||
+            appointment.recentPregnancyHistory.isNotEmpty);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -658,6 +551,11 @@ class _AppointmentCard extends StatelessWidget {
                     Text(
                       appointment.animalName,
                       style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'ID: ${appointment.displayAppointmentCode}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -705,6 +603,80 @@ class _AppointmentCard extends StatelessWidget {
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                       ),
                     ],
+                    if (showPreviousHistory) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Previous Self Treatment History',
+                        style: TextStyle(fontSize: 11.8, fontWeight: FontWeight.w700, color: AppColors.primary),
+                      ),
+                      const SizedBox(height: 4),
+                      ...appointment.previousHistories.take(3).map(
+                        (history) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '${history.completedAt != null ? DateFormat('dd MMM yyyy').format(history.completedAt!.toLocal()) : 'Visit'}: ${history.treatmentDetails.isNotEmpty ? history.treatmentDetails : history.concern}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11.2, color: AppColors.grey),
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (showCowHealthHistory) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Cow Details (Recent History)',
+                        style: TextStyle(fontSize: 11.8, fontWeight: FontWeight.w700, color: AppColors.primary),
+                      ),
+                      if (appointment.recentMilkHistory.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Milk/Fat/SNF (Last 5 Days)',
+                          style: TextStyle(fontSize: 11.2, fontWeight: FontWeight.w700, color: AppColors.grey),
+                        ),
+                        const SizedBox(height: 2),
+                        ...appointment.recentMilkHistory.take(5).map(
+                          (row) => Text(
+                            _milkHistoryLine(row),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11.2, color: AppColors.grey),
+                          ),
+                        ),
+                      ],
+                      if (appointment.recentFeedingHistory.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Feeding Details (Last 5 Days)',
+                          style: TextStyle(fontSize: 11.2, fontWeight: FontWeight.w700, color: AppColors.grey),
+                        ),
+                        const SizedBox(height: 2),
+                        ...appointment.recentFeedingHistory.take(8).map(
+                          (row) => Text(
+                            _feedingHistoryLine(row),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11.2, color: AppColors.grey),
+                          ),
+                        ),
+                      ],
+                      if (appointment.recentPregnancyHistory.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Pregnancy History (Within 6 Months)',
+                          style: TextStyle(fontSize: 11.2, fontWeight: FontWeight.w700, color: AppColors.grey),
+                        ),
+                        const SizedBox(height: 2),
+                        ...appointment.recentPregnancyHistory.take(4).map(
+                          (row) => Text(
+                            _pregnancyHistoryLine(row),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11.2, color: AppColors.grey),
+                          ),
+                        ),
+                      ],
+                    ],
                   ],
                 ),
               ),
@@ -728,7 +700,7 @@ class _AppointmentCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _actionButton(
-                    label: 'Approve',
+                    label: 'Accept',
                     background: const Color(0xFF2E7D32),
                     foreground: AppColors.white,
                     onPressed: onApprove,
@@ -741,15 +713,6 @@ class _AppointmentCard extends StatelessWidget {
                     background: const Color(0xFFFBE9E9),
                     foreground: const Color(0xFFC0392B),
                     onPressed: onDecline,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _actionButton(
-                    label: 'Reschedule',
-                    background: const Color(0xFFEAF5EA),
-                    foreground: AppColors.primary,
-                    onPressed: onReschedule,
                   ),
                 ),
               ],
@@ -844,6 +807,30 @@ class _AppointmentCard extends StatelessWidget {
         errorBuilder: (_, _, _) => _imageFallback(),
       ),
     );
+  }
+
+  String _milkHistoryLine(DoctorAppointmentMilkHistory row) {
+    final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
+    final milk = row.totalMilk?.toStringAsFixed(1) ?? '-';
+    final fat = row.fat?.toStringAsFixed(1) ?? '-';
+    final snf = row.snf?.toStringAsFixed(1) ?? '-';
+    return '$date: Milk $milk L, Fat $fat, SNF $snf';
+  }
+
+  String _feedingHistoryLine(DoctorAppointmentFeedingHistory row) {
+    final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
+    final feed = row.feedType.trim().isEmpty ? 'Feed' : row.feedType;
+    final quantity = row.quantity != null ? row.quantity!.toStringAsFixed(1) : '-';
+    final unit = row.unit.trim().isEmpty ? '' : ' ${row.unit}';
+    final time = row.feedingTime.trim().isEmpty ? '' : ' (${row.feedingTime})';
+    return '$date$time: $feed $quantity$unit';
+  }
+
+  String _pregnancyHistoryLine(DoctorAppointmentPregnancyHistory row) {
+    final ai = row.aiDate != null ? DateFormat('dd MMM yyyy').format(row.aiDate!.toLocal()) : '-';
+    final calving = row.calvingDate != null ? DateFormat('dd MMM yyyy').format(row.calvingDate!.toLocal()) : '-';
+    final confirmed = row.pregnancyConfirmation ? 'Confirmed' : 'Not confirmed';
+    return 'AI: $ai, Calving: $calving, Pregnancy: $confirmed';
   }
 
   Widget _imageFallback() {

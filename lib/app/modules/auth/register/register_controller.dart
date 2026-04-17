@@ -32,7 +32,8 @@ class RegisterController extends GetxController {
   final repeatPasswordController = TextEditingController();
 
   final files = <String, PlatformFile?>{
-    'adhar_document': null,
+    'adhar_document_front': null,
+    'adhar_document_back': null,
     'pan_document': null,
     'mmc_document': null,
     'clinic_registration_document': null,
@@ -44,6 +45,7 @@ class RegisterController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    stateController.text = 'Maharashtra';
     _loadSettings();
   }
 
