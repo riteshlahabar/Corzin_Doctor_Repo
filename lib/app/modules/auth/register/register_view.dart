@@ -46,6 +46,10 @@ class RegisterView extends GetView<RegisterController> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          onPressed: () => Get.back(),
+        ),
         title: const Text(
           'Register Doctor',
           style: TextStyle(fontFamily: 'SF Pro Display', fontWeight: FontWeight.w700),

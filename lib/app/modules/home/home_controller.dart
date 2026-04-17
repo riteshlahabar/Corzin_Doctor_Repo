@@ -18,6 +18,7 @@ import '../../core/services/session_service.dart';
 import '../../routes/app_pages.dart';
 
 class HomeController extends GetxController {
+  static const String _globalNotificationStoreKey = 'doctor_notification_history_global';
   final selectedIndex = 0.obs;
   final profile = Rxn<DoctorProfile>(SessionService.profile);
   final loading = false.obs;
@@ -25,6 +26,7 @@ class HomeController extends GetxController {
   final notifications = <String>[].obs;
   final notificationHistory = <DoctorNotificationItem>[].obs;
   final appointments = <DoctorAppointment>[].obs;
+  final otpRequestedAppointmentIds = <int>{}.obs;
   final banners = <DoctorBannerItem>[].obs;
   final appSettings = Rxn<DoctorSettings>();
   final ApiService _apiService = ApiService();
@@ -130,10 +132,15 @@ class HomeController extends GetxController {
       appointmentLoading.value = true;
       final list = await _apiService.fetchDoctorAppointments(doctorId: currentProfile.id);
       appointments.assignAll(list);
-    } catch (_) {
-      if (appointments.isEmpty) {
-        appointments.assignAll(_fallbackAppointments());
+      final liveIds = list.map((item) => item.id).toSet();
+      otpRequestedAppointmentIds.removeWhere((id) => !liveIds.contains(id));
+      for (final item in list) {
+        if (item.otpVerifiedAt != null) {
+          otpRequestedAppointmentIds.remove(item.id);
+        }
       }
+    } catch (_) {
+      // Keep last real API state; never inject demo data.
     } finally {
       appointmentLoading.value = false;
       _pushLiveLocationForActiveAppointments();
@@ -215,31 +222,95 @@ class HomeController extends GetxController {
   }
 
   void _handleRemoteMessage(RemoteMessage message) {
-    final title = message.notification?.title?.trim();
-    final body = message.notification?.body?.trim();
+    final title = _resolveNotificationTitle(message);
+    final body = _resolveNotificationBody(message);
 
-    final lines = <String>[
-      if (title != null && title.isNotEmpty) title,
-      if (body != null && body.isNotEmpty) body,
-    ];
+    final finalTitle = title?.isNotEmpty == true
+        ? title!
+        : (message.data['event']?.toString().trim().isNotEmpty == true
+            ? message.data['event']!.toString().trim()
+            : 'Notification');
+    final finalBody = body?.isNotEmpty == true ? body! : 'You have a new update.';
 
-    if (lines.isEmpty) return;
-
-    notifications.insert(0, lines.join(': '));
+    notifications.insert(0, '$finalTitle: $finalBody');
     _addNotificationEntry(
-      title: title ?? 'Notification',
-      body: body?.isNotEmpty == true ? body! : 'You have a new update.',
+      title: finalTitle,
+      body: finalBody,
     );
 
     Get.snackbar(
-      title ?? 'Notification',
-      body?.isNotEmpty == true ? body! : 'You have a new update.',
+      finalTitle,
+      finalBody,
       snackPosition: SnackPosition.TOP,
       duration: const Duration(seconds: 4),
     );
 
     refreshProfile();
     refreshAppointments();
+  }
+
+  String? _resolveNotificationTitle(RemoteMessage message) {
+    final fromNotification = message.notification?.title?.trim();
+    if (fromNotification != null && fromNotification.isNotEmpty) {
+      return fromNotification;
+    }
+
+    final fromData = message.data['title']?.toString().trim();
+    if (fromData != null && fromData.isNotEmpty) {
+      return fromData;
+    }
+
+    final altFromData = message.data['notification_title']?.toString().trim();
+    if (altFromData != null && altFromData.isNotEmpty) {
+      return altFromData;
+    }
+
+    final fromMessage = message.data['message']?.toString().trim();
+    if (fromMessage != null && fromMessage.isNotEmpty) {
+      return 'Notification';
+    }
+
+    return null;
+  }
+
+  String? _resolveNotificationBody(RemoteMessage message) {
+    var body = message.notification?.body?.trim();
+    if (body == null || body.isEmpty) {
+      final fromData = message.data['body']?.toString().trim();
+      if (fromData != null && fromData.isNotEmpty) {
+        body = fromData;
+      }
+    }
+
+    if (body == null || body.isEmpty) {
+      final altFromData = message.data['notification_body']?.toString().trim();
+      if (altFromData != null && altFromData.isNotEmpty) {
+        body = altFromData;
+      }
+    }
+
+    if (body == null || body.isEmpty) {
+      final fromMessage = message.data['message']?.toString().trim();
+      if (fromMessage != null && fromMessage.isNotEmpty) {
+        body = fromMessage;
+      }
+    }
+
+    final otp = message.data['visit_otp']?.toString().trim().isNotEmpty == true
+        ? message.data['visit_otp']!.toString().trim()
+        : (message.data['otp']?.toString().trim().isNotEmpty == true
+            ? message.data['otp']!.toString().trim()
+            : '');
+    if (otp.isNotEmpty) {
+      final otpLine = 'Visit OTP: $otp';
+      if (body == null || body.isEmpty) {
+        body = otpLine;
+      } else if (!body.contains(otp)) {
+        body = '$body\n$otpLine';
+      }
+    }
+
+    return body;
   }
 
   Future<void> proposeAppointmentSlot({
@@ -360,6 +431,7 @@ class HomeController extends GetxController {
       } else {
         _upsertAppointment(appointment.copyWith(otpVerifiedAt: DateTime.now()));
       }
+      otpRequestedAppointmentIds.remove(appointment.id);
 
       Get.snackbar('OTP Verified', response['message']?.toString() ?? 'OTP verified successfully.');
     } catch (e) {
@@ -394,6 +466,7 @@ class HomeController extends GetxController {
           ),
         );
       }
+      otpRequestedAppointmentIds.add(appointment.id);
 
       if (showSuccess) {
         Get.snackbar(
@@ -575,51 +648,49 @@ class HomeController extends GetxController {
 
   Future<void> _loadNotificationHistory({int? doctorId}) async {
     final resolvedDoctorId = doctorId ?? profile.value?.id ?? SessionService.profile?.id ?? 0;
-    if (resolvedDoctorId <= 0) {
-      notificationHistory.clear();
-      _loadedNotificationDoctorId = null;
-      return;
-    }
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_notificationStoreKey(resolvedDoctorId));
-      if (raw == null || raw.trim().isEmpty) {
-        notificationHistory.clear();
-        _loadedNotificationDoctorId = resolvedDoctorId;
-        return;
+      final List<DoctorNotificationItem> fromStore = [];
+
+      void parseRaw(String? raw) {
+        if (raw == null || raw.trim().isEmpty) return;
+        final decoded = jsonDecode(raw);
+        if (decoded is! List) return;
+        fromStore.addAll(
+          decoded
+              .whereType<Map>()
+              .map((row) => row.map((k, v) => MapEntry(k.toString(), v)))
+              .map(DoctorNotificationItem.fromJson),
+        );
       }
 
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) {
-        notificationHistory.clear();
-        _loadedNotificationDoctorId = resolvedDoctorId;
-        return;
+      if (resolvedDoctorId > 0) {
+        parseRaw(prefs.getString(_notificationStoreKey(resolvedDoctorId)));
       }
+      parseRaw(prefs.getString(_globalNotificationStoreKey));
 
-      notificationHistory.assignAll(
-        decoded
-            .whereType<Map>()
-            .map((row) => row.map((k, v) => MapEntry(k.toString(), v)))
-            .map(DoctorNotificationItem.fromJson)
-            .toList(),
-      );
-      _loadedNotificationDoctorId = resolvedDoctorId;
+      fromStore.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      notificationHistory.assignAll(fromStore.take(100).toList());
+      _loadedNotificationDoctorId = resolvedDoctorId > 0 ? resolvedDoctorId : null;
     } catch (_) {
       notificationHistory.clear();
-      _loadedNotificationDoctorId = resolvedDoctorId;
+      _loadedNotificationDoctorId = resolvedDoctorId > 0 ? resolvedDoctorId : null;
     }
   }
 
   Future<void> _saveNotificationHistory() async {
     final resolvedDoctorId = profile.value?.id ?? SessionService.profile?.id ?? _loadedNotificationDoctorId ?? 0;
-    if (resolvedDoctorId <= 0) return;
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final payload = notificationHistory.map((item) => item.toJson()).toList();
-      await prefs.setString(_notificationStoreKey(resolvedDoctorId), jsonEncode(payload));
-      _loadedNotificationDoctorId = resolvedDoctorId;
+      final encoded = jsonEncode(payload);
+      if (resolvedDoctorId > 0) {
+        await prefs.setString(_notificationStoreKey(resolvedDoctorId), encoded);
+        _loadedNotificationDoctorId = resolvedDoctorId;
+      }
+      await prefs.setString(_globalNotificationStoreKey, encoded);
     } catch (_) {}
   }
 
@@ -647,38 +718,6 @@ class HomeController extends GetxController {
   }
 
   String _notificationStoreKey(int doctorId) => 'doctor_notification_history_$doctorId';
-
-  List<DoctorAppointment> _fallbackAppointments() {
-    final now = DateTime.now();
-    return [
-      DoctorAppointment(
-        id: 1,
-        farmerName: 'Ramesh Patil',
-        animalName: 'Cow - Gauri',
-        concern: 'Fever and low appetite',
-        status: 'pending',
-        animalPhotoUrl: 'assets/images/available_doctor_1st.png',
-        requestedAt: now.subtract(const Duration(hours: 2)),
-        address: 'Karad, Satara, Maharashtra',
-        latitude: 17.2890,
-        longitude: 74.1818,
-      ),
-      DoctorAppointment(
-        id: 2,
-        farmerName: 'Sunita Jadhav',
-        animalName: 'Buffalo - Laxmi',
-        concern: 'Post treatment follow-up',
-        status: 'approved',
-        animalPhotoUrl: 'assets/images/available_doctor_2nd.png',
-        requestedAt: now.subtract(const Duration(days: 1)),
-        scheduledAt: now.add(const Duration(hours: 3)),
-        charges: 650,
-        address: 'Sangli, Maharashtra',
-        latitude: 16.8524,
-        longitude: 74.5815,
-      ),
-    ];
-  }
 
   Future<void> logout() async {
     _profileSyncTimer?.cancel();

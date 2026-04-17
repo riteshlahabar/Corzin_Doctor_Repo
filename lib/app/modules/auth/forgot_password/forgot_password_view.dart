@@ -13,6 +13,10 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          onPressed: () => Get.back(),
+        ),
         title: const Text(
           'Forgot Password',
           style: TextStyle(fontFamily: 'SF Pro Display', fontWeight: FontWeight.w700),

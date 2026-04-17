@@ -219,6 +219,47 @@ class DoctorAppointment {
       return int.tryParse(value.toString()) ?? 0;
     }
 
+    String parseFarmerFullName() {
+      final farmerRaw = json['farmer'];
+      final farmer = farmerRaw is Map
+          ? farmerRaw.map((key, value) => MapEntry(key.toString(), value))
+          : const <String, dynamic>{};
+
+      final first = (json['farmer_first_name'] ??
+              json['first_name'] ??
+              farmer['first_name'] ??
+              farmer['name_first'] ??
+              '')
+          .toString()
+          .trim();
+      final middle = (json['farmer_middle_name'] ??
+              json['middle_name'] ??
+              farmer['middle_name'] ??
+              farmer['name_middle'] ??
+              '')
+          .toString()
+          .trim();
+      final last = (json['farmer_last_name'] ??
+              json['last_name'] ??
+              farmer['last_name'] ??
+              farmer['name_last'] ??
+              '')
+          .toString()
+          .trim();
+      final combined = [first, middle, last].where((part) => part.isNotEmpty).join(' ').trim();
+      if (combined.isNotEmpty) return combined;
+
+      final full = (json['farmer_name'] ??
+              json['farmerName'] ??
+              json['full_name'] ??
+              farmer['full_name'] ??
+              farmer['name'] ??
+              '')
+          .toString()
+          .trim();
+      return full;
+    }
+
     final diseaseNames = <String>[];
     final diseasesRaw = json['diseases'];
     if (diseasesRaw is List) {
@@ -298,7 +339,7 @@ class DoctorAppointment {
 
     return DoctorAppointment(
       id: parseInt(json['id']),
-      farmerName: (json['farmer_name'] ?? json['farmerName'] ?? '').toString(),
+      farmerName: parseFarmerFullName(),
       animalName: (json['animal_name'] ?? json['animalName'] ?? '').toString(),
       concern: (json['concern'] ?? json['reason'] ?? '').toString(),
       status: (json['effective_status'] ?? json['status'] ?? 'pending').toString(),

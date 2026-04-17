@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/models/doctor_appointment.dart';
 import '../../core/theme/app_colors.dart';
 import '../home/home_controller.dart';
 
@@ -31,7 +30,7 @@ class _DashboardTabState extends State<DashboardTab> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final list = widget.controller.appointments.isEmpty ? _demoAppointments() : widget.controller.appointments.toList();
+      final list = widget.controller.appointments.toList();
       final now = DateTime.now();
 
       bool sameDay(DateTime a, DateTime b) {
@@ -57,25 +56,15 @@ class _DashboardTabState extends State<DashboardTab> {
 
       final recentRequests = list.where((item) => item.canFixAppointment).take(3).toList();
       final backendBanners = widget.controller.banners;
-      final bannerData = backendBanners.isEmpty
-          ? const [
-              _BannerData(
-                image: 'assets/images/app_icon.jpg',
-                isNetwork: false,
-              ),
-              _BannerData(
-                image: 'assets/images/logo.png',
-                isNetwork: false,
-              ),
-            ]
-          : backendBanners
-              .map(
-                (item) => _BannerData(
-                  image: item.imageUrl.isNotEmpty ? item.imageUrl : item.imagePath,
-                  isNetwork: item.imageUrl.isNotEmpty || item.imagePath.startsWith('http'),
-                ),
-              )
-              .toList();
+      final bannerData = backendBanners
+          .map(
+            (item) => _BannerData(
+              image: item.imageUrl.isNotEmpty ? item.imageUrl : item.imagePath,
+              isNetwork: item.imageUrl.isNotEmpty || item.imagePath.startsWith('http'),
+            ),
+          )
+          .where((item) => item.image.trim().isNotEmpty)
+          .toList();
 
       if (_bannerIndex >= bannerData.length && bannerData.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -163,43 +152,44 @@ class _DashboardTabState extends State<DashboardTab> {
                 ],
               ),
             ),
-            Container(
-              color: AppColors.white,
-              padding: const EdgeInsets.only(top: 14, bottom: 18),
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: 138,
-                    child: PageView.builder(
-                      controller: _bannerController,
-                      onPageChanged: (value) => setState(() => _bannerIndex = value),
-                      itemCount: bannerData.length,
-                      itemBuilder: (context, index) => _BannerCard(
-                        image: bannerData[index].image,
-                        isNetwork: bannerData[index].isNetwork,
+            if (bannerData.isNotEmpty)
+              Container(
+                color: AppColors.white,
+                padding: const EdgeInsets.only(top: 14, bottom: 18),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: 138,
+                      child: PageView.builder(
+                        controller: _bannerController,
+                        onPageChanged: (value) => setState(() => _bannerIndex = value),
+                        itemCount: bannerData.length,
+                        itemBuilder: (context, index) => _BannerCard(
+                          image: bannerData[index].image,
+                          isNetwork: bannerData[index].isNetwork,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(bannerData.length, (index) {
-                      final selected = _bannerIndex == index;
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        width: selected ? 18 : 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: selected ? AppColors.black : AppColors.black.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      );
-                    }),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(bannerData.length, (index) {
+                        final selected = _bannerIndex == index;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: selected ? 18 : 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: selected ? AppColors.black : AppColors.black.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
+                ),
               ),
-            ),
             _SectionCard(
               title: 'Today Snapshot',
               child: Column(
@@ -311,6 +301,15 @@ class _DashboardTabState extends State<DashboardTab> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
+                                          'Appointment ID: ${item.displayAppointmentCode}',
+                                          style: const TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
                                           item.concern,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
@@ -322,7 +321,7 @@ class _DashboardTabState extends State<DashboardTab> {
                                   TextButton(
                                     onPressed: () => widget.controller.selectedIndex.value = 1,
                                     child: const Text(
-                                      'Fix Slot',
+                                      'View Details',
                                       style: TextStyle(
                                         color: AppColors.primary,
                                         fontWeight: FontWeight.w700,
@@ -428,48 +427,6 @@ class _DashboardTabState extends State<DashboardTab> {
     );
   }
 
-  List<DoctorAppointment> _demoAppointments() {
-    final now = DateTime.now();
-    return [
-      DoctorAppointment(
-        id: 9001,
-        farmerName: 'Ramesh Patil',
-        animalName: 'Cow - Gauri',
-        concern: 'High fever and low appetite',
-        status: 'pending',
-        animalPhotoUrl: 'assets/images/available_doctor_1st.png',
-        requestedAt: now.subtract(const Duration(hours: 3)),
-        address: 'Karad, Satara',
-      ),
-      DoctorAppointment(
-        id: 9002,
-        farmerName: 'Sunita Jadhav',
-        animalName: 'Buffalo - Laxmi',
-        concern: 'Post treatment check-up',
-        status: 'approved',
-        animalPhotoUrl: 'assets/images/available_doctor_2nd.png',
-        requestedAt: now.subtract(const Duration(days: 1)),
-        scheduledAt: now.add(const Duration(hours: 2)),
-        charges: 650,
-        latitude: 17.2890,
-        longitude: 74.1818,
-        address: 'Sangli, Maharashtra',
-      ),
-      DoctorAppointment(
-        id: 9003,
-        farmerName: 'Mahesh Shinde',
-        animalName: 'Goat - Pari',
-        concern: 'Deworming follow-up',
-        status: 'completed',
-        animalPhotoUrl: 'assets/images/available_doctor_1st.png',
-        requestedAt: now.subtract(const Duration(days: 1, hours: 6)),
-        scheduledAt: now.subtract(const Duration(hours: 2)),
-        completedAt: now.subtract(const Duration(minutes: 40)),
-        charges: 400,
-        address: 'Tasgaon, Sangli',
-      ),
-    ];
-  }
 }
 
 class _BannerCard extends StatelessWidget {

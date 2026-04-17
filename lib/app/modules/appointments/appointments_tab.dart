@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/models/doctor_appointment.dart';
 import '../../core/theme/app_colors.dart';
+import '../../routes/app_pages.dart';
 import '../home/home_controller.dart';
 
 class AppointmentsTab extends StatelessWidget {
@@ -29,15 +30,39 @@ class AppointmentsTab extends StatelessWidget {
               width: double.infinity,
               color: AppColors.primary,
               padding: EdgeInsets.fromLTRB(18, MediaQuery.of(context).padding.top + 8, 18, 14),
-              child: const Text(
-                'My Appointments',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'SF Pro Display',
-                  fontSize: 19,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.white,
-                ),
+              child: Row(
+                children: [
+                  InkWell(
+                    onTap: () {
+                      controller.selectedIndex.value = 0;
+                      if (Get.currentRoute != AppRoutes.home) {
+                        Get.offAllNamed(AppRoutes.home);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.arrow_back_rounded,
+                        color: AppColors.white,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                  const Expanded(
+                    child: Text(
+                      'My Appointments',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'SF Pro Display',
+                        fontSize: 19,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 30),
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -55,11 +80,18 @@ class AppointmentsTab extends StatelessWidget {
               ...appointments.map(
                 (item) => _AppointmentCard(
                   appointment: item,
+                  otpAlreadySent: controller.otpRequestedAppointmentIds.contains(item.id),
                   onApprove: () => controller.approveAppointment(item),
                   onDecline: () => controller.declineAppointment(item),
                   onMap: () => controller.openNavigation(item),
-                  onVerifyOtp: () => _openOtpSheet(context, item),
+                  onVerifyOtp: () => _openOtpSheet(
+                    context,
+                    item,
+                    otpAlreadySent: controller.otpRequestedAppointmentIds.contains(item.id),
+                  ),
                   onStartTreatment: () => controller.startAppointmentTreatment(appointment: item),
+                  onViewHistory: () => _openHistorySheet(context, item),
+                  onViewMore: () => _openAppointmentDetails(context, item),
                   onAddTreatment: () => _openTreatmentSheet(context, item),
                   onComplete: () => controller.markAppointmentCompleted(item),
                 ),
@@ -70,19 +102,26 @@ class AppointmentsTab extends StatelessWidget {
     });
   }
 
-  Future<void> _openOtpSheet(BuildContext context, DoctorAppointment appointment) async {
+  Future<void> _openOtpSheet(
+    BuildContext context,
+    DoctorAppointment appointment, {
+    required bool otpAlreadySent,
+  }) async {
     debugPrint(
-      '[OTP][UI] Verify OTP tapped for appointment=${appointment.id}, '
+      '[OTP][UI] OTP action tapped for appointment=${appointment.id}, '
       'status=${appointment.status}, farmer=${appointment.farmerName}, phone=${appointment.farmerPhone}',
     );
     final otpController = TextEditingController();
-    final sent = await controller.sendAppointmentOtp(
-      appointment: appointment,
-      showSuccess: false,
-    );
-    debugPrint('[OTP][UI] sendAppointmentOtp result for appointment=${appointment.id}: $sent');
-    if (!context.mounted) return;
-    if (sent) {
+    if (!otpAlreadySent) {
+      final sent = await controller.sendAppointmentOtp(
+        appointment: appointment,
+        showSuccess: false,
+      );
+      debugPrint('[OTP][UI] sendAppointmentOtp result for appointment=${appointment.id}: $sent');
+      if (!context.mounted) return;
+      if (!sent) {
+        return;
+      }
       Get.snackbar('OTP Sent', 'OTP sent to farmer mobile. Please enter it below.');
     }
 
@@ -162,9 +201,25 @@ class AppointmentsTab extends StatelessWidget {
   }
 
   Future<void> _openTreatmentSheet(BuildContext context, DoctorAppointment appointment) async {
-    final onsiteTreatmentController = TextEditingController();
+    final parsedTreatment = _parseTreatmentForEditing(appointment.treatmentDetails);
+    final onsiteTreatments = parsedTreatment.onsiteTreatments.isEmpty
+        ? <TextEditingController>[TextEditingController()]
+        : parsedTreatment.onsiteTreatments.map((item) => TextEditingController(text: item)).toList();
+    final pendingOnsiteDispose = <TextEditingController>[];
     final notesController = TextEditingController(text: appointment.notes);
-    final medicines = <_MedicineInput>[_MedicineInput()];
+    final medicines = parsedTreatment.medicines.isEmpty
+        ? <_MedicineInput>[_MedicineInput()]
+        : parsedTreatment.medicines
+            .map(
+              (item) => _MedicineInput(
+                name: item.name,
+                total: item.total,
+                morning: item.morning,
+                afternoon: item.afternoon,
+                evening: item.evening,
+              ),
+            )
+            .toList();
     final pendingDispose = <_MedicineInput>[];
     bool followupRequired = appointment.followupRequired;
     DateTime? nextFollowupDate = appointment.nextFollowupDate?.toLocal();
@@ -355,14 +410,64 @@ class AppointmentsTab extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
-                    controller: onsiteTreatmentController,
-                    minLines: 2,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'On-Site-Treatment',
-                      alignLabelWithHint: true,
-                      constraints: BoxConstraints(minHeight: 64),
+                  const Text(
+                    'On-Site-Treatment',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.grey),
+                  ),
+                  const SizedBox(height: 4),
+                  ...List.generate(onsiteTreatments.length, (index) {
+                    final rowController = onsiteTreatments[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: rowController,
+                              minLines: 1,
+                              maxLines: 1,
+                              decoration: const InputDecoration(
+                                hintText: 'On-site treatment',
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          if (onsiteTreatments.length > 1)
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  pendingOnsiteDispose.add(onsiteTreatments.removeAt(index));
+                                });
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  for (final item in pendingOnsiteDispose) {
+                                    item.dispose();
+                                  }
+                                  pendingOnsiteDispose.clear();
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                height: 26,
+                                width: 26,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFBE9E9),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Icon(Icons.remove_rounded, size: 16, color: Color(0xFFC0392B)),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      onPressed: () => setState(() => onsiteTreatments.add(TextEditingController())),
+                      icon: const Icon(Icons.add_circle_rounded, color: AppColors.primary),
+                      tooltip: 'Add on-site treatment',
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -441,11 +546,19 @@ class AppointmentsTab extends StatelessWidget {
                           return;
                         }
 
+                        final onsiteEntries = onsiteTreatments
+                            .map((item) => item.text.trim())
+                            .where((item) => item.isNotEmpty)
+                            .toList();
+
+                        final onsiteBlock = onsiteEntries.isEmpty
+                            ? null
+                            : 'On-Site-Treatment: ${onsiteEntries.join(', ')}';
+
                         final treatment = [
-                          if (onsiteTreatmentController.text.trim().isNotEmpty)
-                            'On-Site-Treatment: ${onsiteTreatmentController.text.trim()}',
+                          onsiteBlock,
                           entries.join('\n'),
-                        ].join('\n');
+                        ].whereType<String>().join('\n');
                         Navigator.of(sheetContext).pop();
                         await controller.saveAppointmentTreatment(
                           appointment: appointment,
@@ -478,11 +591,291 @@ class AppointmentsTab extends StatelessWidget {
     for (final item in pendingDispose) {
       item.dispose();
     }
+    for (final item in pendingOnsiteDispose) {
+      item.dispose();
+    }
     for (final medicine in medicines) {
       medicine.dispose();
     }
-    onsiteTreatmentController.dispose();
+    for (final item in onsiteTreatments) {
+      item.dispose();
+    }
     notesController.dispose();
+  }
+
+  _ParsedTreatmentData _parseTreatmentForEditing(String rawTreatment) {
+    final treatment = rawTreatment.trim();
+    if (treatment.isEmpty) {
+      return const _ParsedTreatmentData();
+    }
+
+    final onsiteEntries = <String>[];
+    final medicineEntries = <_ParsedMedicineData>[];
+
+    final lines = treatment.split('\n').map((item) => item.trim()).where((item) => item.isNotEmpty);
+    for (final line in lines) {
+      final onsiteMatch = RegExp(r'^on-site-treatment\s*:\s*(.*)$', caseSensitive: false).firstMatch(line);
+      if (onsiteMatch != null) {
+        final onsiteValue = (onsiteMatch.group(1) ?? '').trim();
+        if (onsiteValue.isNotEmpty) {
+          onsiteEntries.addAll(
+            onsiteValue
+                .split(',')
+                .map((item) => item.trim())
+                .where((item) => item.isNotEmpty),
+          );
+        }
+        continue;
+      }
+
+      final cleaned = line.replaceFirst(RegExp(r'^\d+\.\s*'), '');
+      final parts = cleaned.split('|').map((item) => item.trim()).toList();
+      if (parts.isEmpty || parts.first.isEmpty) {
+        continue;
+      }
+
+      final medicineName = parts.first;
+      String totalTabs = '';
+      String schedule = '';
+
+      for (final part in parts.skip(1)) {
+        if (part.toLowerCase().startsWith('time:')) {
+          schedule = part.substring(5).trim().toUpperCase();
+        } else if (part.toLowerCase().startsWith('total tabs:')) {
+          totalTabs = part.substring(11).trim();
+        }
+      }
+
+      medicineEntries.add(
+        _ParsedMedicineData(
+          name: medicineName,
+          total: totalTabs == '-' ? '' : totalTabs,
+          morning: RegExp(r'(^|[^A-Z])M([^A-Z]|$)').hasMatch(schedule),
+          afternoon: RegExp(r'(^|[^A-Z])A([^A-Z]|$)').hasMatch(schedule),
+          evening: RegExp(r'(^|[^A-Z])E([^A-Z]|$)').hasMatch(schedule),
+        ),
+      );
+    }
+
+    if (medicineEntries.isEmpty && onsiteEntries.isEmpty && treatment.isNotEmpty) {
+      onsiteEntries.add(treatment);
+    }
+
+    return _ParsedTreatmentData(
+      onsiteTreatments: onsiteEntries,
+      medicines: medicineEntries,
+    );
+  }
+
+  Future<void> _openHistorySheet(BuildContext context, DoctorAppointment appointment) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(sheetContext).viewInsets.bottom + 16),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Animal Past History',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${appointment.farmerName} • ${appointment.animalName}',
+                    style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  if (appointment.previousHistories.isNotEmpty) ...[
+                    const Text(
+                      'Past Clinic Visits',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                    ),
+                    const SizedBox(height: 6),
+                    ...appointment.previousHistories.map((history) {
+                      final when = history.completedAt != null
+                          ? DateFormat('dd MMM yyyy').format(history.completedAt!.toLocal())
+                          : 'Visit';
+                      final details = history.treatmentDetails.trim().isNotEmpty
+                          ? history.treatmentDetails.trim()
+                          : history.concern.trim();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          '$when: $details',
+                          style: const TextStyle(fontSize: 12.2, color: AppColors.grey),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                  ],
+                  if (appointment.recentMilkHistory.isNotEmpty) ...[
+                    const Text(
+                      'Milk / Fat / SNF (Last 5 Days)',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                    ),
+                    const SizedBox(height: 6),
+                    ...appointment.recentMilkHistory.take(5).map((row) {
+                      final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
+                      final milk = row.totalMilk?.toStringAsFixed(1) ?? '-';
+                      final fat = row.fat?.toStringAsFixed(1) ?? '-';
+                      final snf = row.snf?.toStringAsFixed(1) ?? '-';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '$date: Milk $milk L, Fat $fat, SNF $snf',
+                          style: const TextStyle(fontSize: 12.2, color: AppColors.grey),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                  ],
+                  if (appointment.recentFeedingHistory.isNotEmpty) ...[
+                    const Text(
+                      'Feeding Data (Last 5 Days)',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                    ),
+                    const SizedBox(height: 6),
+                    ...appointment.recentFeedingHistory.take(8).map((row) {
+                      final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
+                      final feed = row.feedType.trim().isEmpty ? 'Feed' : row.feedType;
+                      final quantity = row.quantity != null ? row.quantity!.toStringAsFixed(1) : '-';
+                      final unit = row.unit.trim().isEmpty ? '' : ' ${row.unit}';
+                      final time = row.feedingTime.trim().isEmpty ? '' : ' (${row.feedingTime})';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '$date$time: $feed $quantity$unit',
+                          style: const TextStyle(fontSize: 12.2, color: AppColors.grey),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                  ],
+                  if (appointment.recentPregnancyHistory.isNotEmpty) ...[
+                    const Text(
+                      'Pregnancy Data (Within 6 Months)',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                    ),
+                    const SizedBox(height: 6),
+                    ...appointment.recentPregnancyHistory.take(6).map((row) {
+                      final ai = row.aiDate != null ? DateFormat('dd MMM yyyy').format(row.aiDate!.toLocal()) : '-';
+                      final calving = row.calvingDate != null ? DateFormat('dd MMM yyyy').format(row.calvingDate!.toLocal()) : '-';
+                      final confirmed = row.pregnancyConfirmation ? 'Confirmed' : 'Not confirmed';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          'AI: $ai, Calving: $calving, Pregnancy: $confirmed',
+                          style: const TextStyle(fontSize: 12.2, color: AppColors.grey),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                  ],
+                  if (appointment.previousHistories.isEmpty &&
+                      appointment.recentMilkHistory.isEmpty &&
+                      appointment.recentFeedingHistory.isEmpty &&
+                      appointment.recentPregnancyHistory.isEmpty)
+                    const Text(
+                      'No history available yet.',
+                      style: TextStyle(fontSize: 12.5, color: AppColors.grey),
+                    ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: AppColors.white,
+                      ),
+                      child: const Text('Close'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openAppointmentDetails(BuildContext context, DoctorAppointment appointment) async {
+    final when = appointment.scheduledAt ?? appointment.requestedAt;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(sheetContext).viewInsets.bottom + 16),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Appointment Details',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 10),
+                  _detailRow('Farmer', appointment.farmerName),
+                  _detailRow('Animal', appointment.animalName),
+                  _detailRow('Appointment ID', appointment.displayAppointmentCode),
+                  _detailRow('Status', appointment.statusLabel),
+                  if (when != null) _detailRow('Date & Time', DateFormat('dd MMM yyyy, hh:mm a').format(when.toLocal())),
+                  if (appointment.diseaseNames.isNotEmpty) _detailRow('Disease', appointment.diseaseNames.join(', ')),
+                  if (appointment.diseaseDetails.trim().isNotEmpty) _detailRow('Details', appointment.diseaseDetails),
+                  if (appointment.treatmentDetails.trim().isNotEmpty)
+                    _detailRow('Treatment', appointment.treatmentDetails),
+                  if (appointment.followupRequired && appointment.nextFollowupDate != null)
+                    _detailRow(
+                      'Next Follow-up',
+                      DateFormat('dd MMM yyyy').format(appointment.nextFollowupDate!.toLocal()),
+                    ),
+                  if (appointment.charges != null)
+                    _detailRow('Charges', 'Rs ${appointment.charges!.toStringAsFixed(0)}'),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: AppColors.white,
+                      ),
+                      child: const Text('Close'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        '$label: $value',
+        softWrap: true,
+        style: const TextStyle(fontSize: 12, color: AppColors.grey),
+      ),
+    );
   }
 
 }
@@ -490,21 +883,27 @@ class AppointmentsTab extends StatelessWidget {
 class _AppointmentCard extends StatelessWidget {
   const _AppointmentCard({
     required this.appointment,
+    required this.otpAlreadySent,
     required this.onApprove,
     required this.onDecline,
     required this.onMap,
     required this.onVerifyOtp,
     required this.onStartTreatment,
+    required this.onViewHistory,
+    required this.onViewMore,
     required this.onAddTreatment,
     required this.onComplete,
   });
 
   final DoctorAppointment appointment;
+  final bool otpAlreadySent;
   final VoidCallback onApprove;
   final VoidCallback onDecline;
   final VoidCallback onMap;
   final VoidCallback onVerifyOtp;
   final VoidCallback onStartTreatment;
+  final VoidCallback onViewHistory;
+  final VoidCallback onViewMore;
   final VoidCallback onAddTreatment;
   final VoidCallback onComplete;
 
@@ -515,14 +914,12 @@ class _AppointmentCard extends StatelessWidget {
     final showActionButtons = appointment.canFixAppointment;
     final waitingApproval = appointment.waitingForFarmerApproval;
     final canNavigate = appointment.canNavigate;
-    final showPreviousHistory = appointment.otpVerifiedAt != null &&
-        appointment.normalizedStatus != 'completed' &&
-        appointment.previousHistories.isNotEmpty;
-    final showCowHealthHistory = appointment.otpVerifiedAt != null &&
-        appointment.normalizedStatus != 'completed' &&
-        (appointment.recentMilkHistory.isNotEmpty ||
-            appointment.recentFeedingHistory.isNotEmpty ||
-            appointment.recentPregnancyHistory.isNotEmpty);
+    final hasTreatmentDetails = appointment.treatmentDetails.trim().isNotEmpty;
+    final isInProgress = appointment.normalizedStatus == 'in_progress';
+    final hasHistoryData = appointment.previousHistories.isNotEmpty ||
+        appointment.recentMilkHistory.isNotEmpty ||
+        appointment.recentFeedingHistory.isNotEmpty ||
+        appointment.recentPregnancyHistory.isNotEmpty;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -534,165 +931,110 @@ class _AppointmentCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _animalImage(appointment.animalPhotoUrl),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      appointment.farmerName,
-                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      appointment.animalName,
-                      style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'ID: ${appointment.displayAppointmentCode}',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      appointment.concern,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
-                    ),
-                    if (appointment.diseaseNames.isNotEmpty) ...[
-                      const SizedBox(height: 2),
+          SizedBox(
+            height: 132,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _animalImage(appointment.animalPhotoUrl),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        'Disease: ${appointment.diseaseNames.join(', ')}',
-                        style: const TextStyle(fontSize: 12, color: AppColors.grey),
-                      ),
-                    ],
-                    if (appointment.diseaseDetails.trim().isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Details: ${appointment.diseaseDetails}',
-                        maxLines: 2,
+                        appointment.farmerName,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: AppColors.grey),
+                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
                       ),
-                    ],
-                    if (appointment.treatmentDetails.trim().isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        'Treatment: ${appointment.treatmentDetails}',
-                        maxLines: 2,
+                        appointment.animalName,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: AppColors.grey),
+                        style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
                       ),
-                    ],
-                    if (appointment.followupRequired && appointment.nextFollowupDate != null) ...[
                       const SizedBox(height: 2),
                       Text(
-                        'Next Follow-up: ${DateFormat('dd MMM yyyy').format(appointment.nextFollowupDate!)}',
-                        style: const TextStyle(fontSize: 12, color: AppColors.grey),
+                        'ID: ${appointment.displayAppointmentCode}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
                       ),
-                    ],
-                    if (appointment.charges != null) ...[
                       const SizedBox(height: 3),
                       Text(
-                        'Rs ${appointment.charges!.toStringAsFixed(0)}',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                        appointment.concern,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
                       ),
-                    ],
-                    if (showPreviousHistory) ...[
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Previous Self Treatment History',
-                        style: TextStyle(fontSize: 11.8, fontWeight: FontWeight.w700, color: AppColors.primary),
-                      ),
-                      const SizedBox(height: 4),
-                      ...appointment.previousHistories.take(3).map(
-                        (history) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            '${history.completedAt != null ? DateFormat('dd MMM yyyy').format(history.completedAt!.toLocal()) : 'Visit'}: ${history.treatmentDetails.isNotEmpty ? history.treatmentDetails : history.concern}',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11.2, color: AppColors.grey),
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (showCowHealthHistory) ...[
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Cow Details (Recent History)',
-                        style: TextStyle(fontSize: 11.8, fontWeight: FontWeight.w700, color: AppColors.primary),
-                      ),
-                      if (appointment.recentMilkHistory.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Milk/Fat/SNF (Last 5 Days)',
-                          style: TextStyle(fontSize: 11.2, fontWeight: FontWeight.w700, color: AppColors.grey),
-                        ),
+                      if (appointment.diseaseNames.isNotEmpty) ...[
                         const SizedBox(height: 2),
-                        ...appointment.recentMilkHistory.take(5).map(
-                          (row) => Text(
-                            _milkHistoryLine(row),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11.2, color: AppColors.grey),
-                          ),
+                        Text(
+                          'Disease: ${appointment.diseaseNames.join(', ')}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: AppColors.grey),
                         ),
                       ],
-                      if (appointment.recentFeedingHistory.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Feeding Details (Last 5 Days)',
-                          style: TextStyle(fontSize: 11.2, fontWeight: FontWeight.w700, color: AppColors.grey),
-                        ),
+                      if (appointment.treatmentDetails.trim().isNotEmpty) ...[
                         const SizedBox(height: 2),
-                        ...appointment.recentFeedingHistory.take(8).map(
-                          (row) => Text(
-                            _feedingHistoryLine(row),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11.2, color: AppColors.grey),
-                          ),
+                        Text(
+                          'Treatment: ${appointment.treatmentDetails}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: AppColors.grey),
                         ),
                       ],
-                      if (appointment.recentPregnancyHistory.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Pregnancy History (Within 6 Months)',
-                          style: TextStyle(fontSize: 11.2, fontWeight: FontWeight.w700, color: AppColors.grey),
-                        ),
-                        const SizedBox(height: 2),
-                        ...appointment.recentPregnancyHistory.take(4).map(
-                          (row) => Text(
-                            _pregnancyHistoryLine(row),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11.2, color: AppColors.grey),
+                      const Spacer(),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: InkWell(
+                          onTap: onViewMore,
+                          child: const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Text(
+                              'View more',
+                              style: TextStyle(
+                                fontSize: 12.2,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                                decoration: TextDecoration.underline,
+                                decorationColor: AppColors.primary,
+                              ),
+                            ),
                           ),
                         ),
-                      ],
+                      ),
                     ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (when != null)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            DateFormat('dd-MM-yyyy').format(when.toLocal()),
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.grey),
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            DateFormat('hh:mm a').format(when.toLocal()),
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.grey),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 6),
+                    _statusPill(status),
                   ],
                 ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (when != null)
-                    Text(
-                      DateFormat('dd-MM-yyyy').format(when.toLocal()),
-                      style: const TextStyle(fontSize: 11.5, color: AppColors.grey),
-                    ),
-                  const SizedBox(height: 6),
-                  _statusPill(status),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 10),
           if (showActionButtons)
@@ -733,7 +1075,7 @@ class _AppointmentCard extends StatelessWidget {
               children: [
                 if (appointment.needsOtpVerification)
                   _actionButton(
-                    label: 'Verify OTP',
+                    label: otpAlreadySent ? 'Verify OTP' : 'Send OTP',
                     background: AppColors.primary,
                     foreground: AppColors.white,
                     onPressed: onVerifyOtp,
@@ -745,14 +1087,23 @@ class _AppointmentCard extends StatelessWidget {
                     foreground: AppColors.white,
                     onPressed: onStartTreatment,
                   ),
-                if (appointment.normalizedStatus == 'in_progress')
+                if (appointment.otpVerifiedAt != null &&
+                    appointment.normalizedStatus != 'completed' &&
+                    hasHistoryData)
                   _actionButton(
-                    label: 'Add Treatment',
+                    label: 'View History',
+                    background: const Color(0xFFEAF5EA),
+                    foreground: AppColors.primary,
+                    onPressed: onViewHistory,
+                  ),
+                if (isInProgress)
+                  _actionButton(
+                    label: hasTreatmentDetails ? 'Edit Treatment' : 'Add Treatment',
                     background: const Color(0xFFEAF5EA),
                     foreground: AppColors.primary,
                     onPressed: onAddTreatment,
                   ),
-                if (appointment.canComplete)
+                if (isInProgress && hasTreatmentDetails)
                   _actionButton(
                     label: 'Complete',
                     background: const Color(0xFF2E7D32),
@@ -807,30 +1158,6 @@ class _AppointmentCard extends StatelessWidget {
         errorBuilder: (_, _, _) => _imageFallback(),
       ),
     );
-  }
-
-  String _milkHistoryLine(DoctorAppointmentMilkHistory row) {
-    final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
-    final milk = row.totalMilk?.toStringAsFixed(1) ?? '-';
-    final fat = row.fat?.toStringAsFixed(1) ?? '-';
-    final snf = row.snf?.toStringAsFixed(1) ?? '-';
-    return '$date: Milk $milk L, Fat $fat, SNF $snf';
-  }
-
-  String _feedingHistoryLine(DoctorAppointmentFeedingHistory row) {
-    final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
-    final feed = row.feedType.trim().isEmpty ? 'Feed' : row.feedType;
-    final quantity = row.quantity != null ? row.quantity!.toStringAsFixed(1) : '-';
-    final unit = row.unit.trim().isEmpty ? '' : ' ${row.unit}';
-    final time = row.feedingTime.trim().isEmpty ? '' : ' (${row.feedingTime})';
-    return '$date$time: $feed $quantity$unit';
-  }
-
-  String _pregnancyHistoryLine(DoctorAppointmentPregnancyHistory row) {
-    final ai = row.aiDate != null ? DateFormat('dd MMM yyyy').format(row.aiDate!.toLocal()) : '-';
-    final calving = row.calvingDate != null ? DateFormat('dd MMM yyyy').format(row.calvingDate!.toLocal()) : '-';
-    final confirmed = row.pregnancyConfirmation ? 'Confirmed' : 'Not confirmed';
-    return 'AI: $ai, Calving: $calving, Pregnancy: $confirmed';
   }
 
   Widget _imageFallback() {
@@ -920,17 +1247,46 @@ class _MedicineInput {
   _MedicineInput({
     String? name,
     String? total,
+    this.morning = false,
+    this.afternoon = false,
+    this.evening = false,
   })  : nameController = TextEditingController(text: name ?? ''),
         totalController = TextEditingController(text: total ?? '');
 
   final TextEditingController nameController;
   final TextEditingController totalController;
-  bool morning = false;
-  bool afternoon = false;
-  bool evening = false;
+  bool morning;
+  bool afternoon;
+  bool evening;
 
   void dispose() {
     nameController.dispose();
     totalController.dispose();
   }
+}
+
+class _ParsedTreatmentData {
+  const _ParsedTreatmentData({
+    this.onsiteTreatments = const [],
+    this.medicines = const [],
+  });
+
+  final List<String> onsiteTreatments;
+  final List<_ParsedMedicineData> medicines;
+}
+
+class _ParsedMedicineData {
+  const _ParsedMedicineData({
+    required this.name,
+    required this.total,
+    required this.morning,
+    required this.afternoon,
+    required this.evening,
+  });
+
+  final String name;
+  final String total;
+  final bool morning;
+  final bool afternoon;
+  final bool evening;
 }
