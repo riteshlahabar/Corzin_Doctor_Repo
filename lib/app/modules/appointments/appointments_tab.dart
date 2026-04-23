@@ -91,9 +91,14 @@ class AppointmentsTab extends StatelessWidget {
                   ),
                   onStartTreatment: () => controller.startAppointmentTreatment(appointment: item),
                   onViewHistory: () => _openHistorySheet(context, item),
-                  onViewMore: () => _openAppointmentDetails(context, item),
+                  onViewMore: () => _openAppointmentDetails(
+                    context,
+                    item,
+                    controller.appointmentDistanceLabels[item.id] ?? '--',
+                  ),
                   onAddTreatment: () => _openTreatmentSheet(context, item),
-                  onComplete: () => controller.markAppointmentCompleted(item),
+                  onComplete: () => _openCompleteWithChargesSheet(context, item),
+                  distanceLabel: controller.appointmentDistanceLabels[item.id] ?? '--',
                 ),
               ),
           ],
@@ -198,6 +203,132 @@ class AppointmentsTab extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<void> _openCompleteWithChargesSheet(
+    BuildContext context,
+    DoctorAppointment appointment,
+  ) async {
+    final feesController = TextEditingController(
+      text: appointment.fees != null
+          ? appointment.fees!.toStringAsFixed(0)
+          : ((appointment.charges ?? 0) > 0 ? appointment.charges!.toStringAsFixed(0) : ''),
+    );
+    final onSiteMedicineChargesController = TextEditingController(
+      text: appointment.onSiteMedicineCharges != null
+          ? appointment.onSiteMedicineCharges!.toStringAsFixed(0)
+          : '',
+    );
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useRootNavigator: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (sheetContext) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              final parsedFees = double.tryParse(feesController.text.trim());
+              final parsedOnSiteMedicineCharges =
+                  double.tryParse(onSiteMedicineChargesController.text.trim()) ?? 0;
+              final canSubmit = parsedFees != null && parsedFees > 0;
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Complete Appointment',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Enter final charges to complete this appointment.',
+                      style: TextStyle(fontSize: 12.5, color: AppColors.grey),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: feesController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(fontSize: 12.2),
+                      decoration: const InputDecoration(
+                        labelText: 'Fees',
+                        prefixText: 'Rs ',
+                        hintText: 'Enter visit fees',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        labelStyle: TextStyle(fontSize: 12),
+                        hintStyle: TextStyle(fontSize: 11.5),
+                        floatingLabelStyle: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: onSiteMedicineChargesController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(fontSize: 12.2),
+                      decoration: const InputDecoration(
+                        labelText: 'On Site Medicine Charges',
+                        prefixText: 'Rs ',
+                        hintText: 'Enter on site medicine charges',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        labelStyle: TextStyle(fontSize: 12),
+                        hintStyle: TextStyle(fontSize: 11.5),
+                        floatingLabelStyle: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Total: Rs ${(canSubmit ? (parsedFees + parsedOnSiteMedicineCharges) : 0).toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: canSubmit
+                            ? () async {
+                                Navigator.of(sheetContext).pop();
+                                await controller.markAppointmentCompleted(
+                                  appointment,
+                                  fees: parsedFees,
+                                  onSiteMedicineCharges: parsedOnSiteMedicineCharges,
+                                );
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.white,
+                        ),
+                        child: const Text('Submit'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      feesController.dispose();
+      onSiteMedicineChargesController.dispose();
+    }
   }
 
   Future<void> _openTreatmentSheet(BuildContext context, DoctorAppointment appointment) async {
@@ -675,11 +806,12 @@ class AppointmentsTab extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (sheetContext) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(sheetContext).viewInsets.bottom + 16),
-            child: SingleChildScrollView(
+        return FractionallySizedBox(
+          heightFactor: 0.68,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(sheetContext).viewInsets.bottom + 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -690,103 +822,164 @@ class AppointmentsTab extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     '${appointment.farmerName} • ${appointment.animalName}',
-                    style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF4E5A4E),
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  if (appointment.previousHistories.isNotEmpty) ...[
-                    const Text(
-                      'Past Clinic Visits',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (appointment.previousHistories.isNotEmpty) ...[
+                            const Text(
+                              'Past Clinic Visits',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                            ),
+                            const SizedBox(height: 6),
+                            ...appointment.previousHistories.map((history) {
+                              final when = history.completedAt != null
+                                  ? DateFormat('dd MMM yyyy, hh:mm a').format(history.completedAt!.toLocal())
+                                  : 'Visit';
+                              final details = history.treatmentDetails.trim().isNotEmpty
+                                  ? history.treatmentDetails.trim()
+                                  : history.concern.trim();
+                              final onsite = history.onsiteTreatment.trim();
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      when,
+                                      style: const TextStyle(
+                                        fontSize: 12.2,
+                                        fontWeight: FontWeight.w900,
+                                        color: Color(0xFF111A11),
+                                      ),
+                                    ),
+                                    if (onsite.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'On-Site Treatment: $onsite',
+                                        style: const TextStyle(
+                                          fontSize: 12.2,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF4E5A4E),
+                                        ),
+                                      ),
+                                    ],
+                                    if (details.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        details,
+                                        style: const TextStyle(
+                                          fontSize: 12.2,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF4E5A4E),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 8),
+                          ],
+                          if (appointment.recentMilkHistory.isNotEmpty) ...[
+                            const Text(
+                              'Milk / Fat / SNF (Last 5 Days)',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                            ),
+                            const SizedBox(height: 6),
+                            ...appointment.recentMilkHistory.take(5).map((row) {
+                              final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
+                              final milk = row.totalMilk?.toStringAsFixed(1) ?? '-';
+                              final fat = row.fat?.toStringAsFixed(1) ?? '-';
+                              final snf = row.snf?.toStringAsFixed(1) ?? '-';
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  '$date: Milk $milk L, Fat $fat, SNF $snf',
+                                  style: const TextStyle(
+                                    fontSize: 12.2,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF4E5A4E),
+                                  ),
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 8),
+                          ],
+                          if (appointment.recentFeedingHistory.isNotEmpty) ...[
+                            const Text(
+                              'Feeding Data (Last 5 Days)',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                            ),
+                            const SizedBox(height: 6),
+                            ...appointment.recentFeedingHistory.take(8).map((row) {
+                              final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
+                              final feed = row.feedType.trim().isEmpty ? 'Feed' : row.feedType;
+                              final quantity = row.quantity != null ? row.quantity!.toStringAsFixed(1) : '-';
+                              final unit = row.unit.trim().isEmpty ? '' : ' ${row.unit}';
+                              final time = row.feedingTime.trim().isEmpty ? '' : ' (${row.feedingTime})';
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  '$date$time: $feed $quantity$unit',
+                                  style: const TextStyle(
+                                    fontSize: 12.2,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF4E5A4E),
+                                  ),
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 8),
+                          ],
+                          if (appointment.recentPregnancyHistory.isNotEmpty) ...[
+                            const Text(
+                              'Pregnancy Data (Within 6 Months)',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                            ),
+                            const SizedBox(height: 6),
+                            ...appointment.recentPregnancyHistory.take(6).map((row) {
+                              final ai = row.aiDate != null ? DateFormat('dd MMM yyyy').format(row.aiDate!.toLocal()) : '-';
+                              final calving = row.calvingDate != null ? DateFormat('dd MMM yyyy').format(row.calvingDate!.toLocal()) : '-';
+                              final confirmed = row.pregnancyConfirmation ? 'Confirmed' : 'Not confirmed';
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  'AI: $ai, Calving: $calving, Pregnancy: $confirmed',
+                                  style: const TextStyle(
+                                    fontSize: 12.2,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF4E5A4E),
+                                  ),
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 8),
+                          ],
+                          if (appointment.previousHistories.isEmpty &&
+                              appointment.recentMilkHistory.isEmpty &&
+                              appointment.recentFeedingHistory.isEmpty &&
+                              appointment.recentPregnancyHistory.isEmpty)
+                            const Text(
+                              'No history available yet.',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF4E5A4E),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 6),
-                    ...appointment.previousHistories.map((history) {
-                      final when = history.completedAt != null
-                          ? DateFormat('dd MMM yyyy').format(history.completedAt!.toLocal())
-                          : 'Visit';
-                      final details = history.treatmentDetails.trim().isNotEmpty
-                          ? history.treatmentDetails.trim()
-                          : history.concern.trim();
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          '$when: $details',
-                          style: const TextStyle(fontSize: 12.2, color: AppColors.grey),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 8),
-                  ],
-                  if (appointment.recentMilkHistory.isNotEmpty) ...[
-                    const Text(
-                      'Milk / Fat / SNF (Last 5 Days)',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
-                    ),
-                    const SizedBox(height: 6),
-                    ...appointment.recentMilkHistory.take(5).map((row) {
-                      final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
-                      final milk = row.totalMilk?.toStringAsFixed(1) ?? '-';
-                      final fat = row.fat?.toStringAsFixed(1) ?? '-';
-                      final snf = row.snf?.toStringAsFixed(1) ?? '-';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          '$date: Milk $milk L, Fat $fat, SNF $snf',
-                          style: const TextStyle(fontSize: 12.2, color: AppColors.grey),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 8),
-                  ],
-                  if (appointment.recentFeedingHistory.isNotEmpty) ...[
-                    const Text(
-                      'Feeding Data (Last 5 Days)',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
-                    ),
-                    const SizedBox(height: 6),
-                    ...appointment.recentFeedingHistory.take(8).map((row) {
-                      final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
-                      final feed = row.feedType.trim().isEmpty ? 'Feed' : row.feedType;
-                      final quantity = row.quantity != null ? row.quantity!.toStringAsFixed(1) : '-';
-                      final unit = row.unit.trim().isEmpty ? '' : ' ${row.unit}';
-                      final time = row.feedingTime.trim().isEmpty ? '' : ' (${row.feedingTime})';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          '$date$time: $feed $quantity$unit',
-                          style: const TextStyle(fontSize: 12.2, color: AppColors.grey),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 8),
-                  ],
-                  if (appointment.recentPregnancyHistory.isNotEmpty) ...[
-                    const Text(
-                      'Pregnancy Data (Within 6 Months)',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
-                    ),
-                    const SizedBox(height: 6),
-                    ...appointment.recentPregnancyHistory.take(6).map((row) {
-                      final ai = row.aiDate != null ? DateFormat('dd MMM yyyy').format(row.aiDate!.toLocal()) : '-';
-                      final calving = row.calvingDate != null ? DateFormat('dd MMM yyyy').format(row.calvingDate!.toLocal()) : '-';
-                      final confirmed = row.pregnancyConfirmation ? 'Confirmed' : 'Not confirmed';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          'AI: $ai, Calving: $calving, Pregnancy: $confirmed',
-                          style: const TextStyle(fontSize: 12.2, color: AppColors.grey),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 8),
-                  ],
-                  if (appointment.previousHistories.isEmpty &&
-                      appointment.recentMilkHistory.isEmpty &&
-                      appointment.recentFeedingHistory.isEmpty &&
-                      appointment.recentPregnancyHistory.isEmpty)
-                    const Text(
-                      'No history available yet.',
-                      style: TextStyle(fontSize: 12.5, color: AppColors.grey),
-                    ),
+                  ),
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
@@ -808,7 +1001,11 @@ class AppointmentsTab extends StatelessWidget {
     );
   }
 
-  Future<void> _openAppointmentDetails(BuildContext context, DoctorAppointment appointment) async {
+  Future<void> _openAppointmentDetails(
+    BuildContext context,
+    DoctorAppointment appointment,
+    String distanceLabel,
+  ) async {
     final when = appointment.scheduledAt ?? appointment.requestedAt;
     await showModalBottomSheet<void>(
       context: context,
@@ -834,8 +1031,31 @@ class AppointmentsTab extends StatelessWidget {
                   _detailRow('Animal', appointment.animalName),
                   _detailRow('Appointment ID', appointment.displayAppointmentCode),
                   _detailRow('Status', appointment.statusLabel),
+                  _detailRow(
+                    'Address',
+                    appointment.address.trim().isEmpty ? '-' : appointment.address.trim(),
+                  ),
                   if (when != null) _detailRow('Date & Time', DateFormat('dd MMM yyyy, hh:mm a').format(when.toLocal())),
                   if (appointment.diseaseNames.isNotEmpty) _detailRow('Disease', appointment.diseaseNames.join(', ')),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF7CB342).withValues(alpha: 0.6)),
+                    ),
+                    child: Text(
+                      'Distance: $distanceLabel',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.8,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                  ),
                   if (appointment.diseaseDetails.trim().isNotEmpty) _detailRow('Details', appointment.diseaseDetails),
                   if (appointment.treatmentDetails.trim().isNotEmpty)
                     _detailRow('Treatment', appointment.treatmentDetails),
@@ -844,8 +1064,15 @@ class AppointmentsTab extends StatelessWidget {
                       'Next Follow-up',
                       DateFormat('dd MMM yyyy').format(appointment.nextFollowupDate!.toLocal()),
                     ),
+                  if (appointment.fees != null)
+                    _detailRow('Fees', 'Rs ${appointment.fees!.toStringAsFixed(0)}'),
+                  if (appointment.onSiteMedicineCharges != null)
+                    _detailRow(
+                      'On Site Medicine Charges',
+                      'Rs ${appointment.onSiteMedicineCharges!.toStringAsFixed(0)}',
+                    ),
                   if (appointment.charges != null)
-                    _detailRow('Charges', 'Rs ${appointment.charges!.toStringAsFixed(0)}'),
+                    _detailRow('Total', 'Rs ${appointment.charges!.toStringAsFixed(0)}'),
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
@@ -873,7 +1100,11 @@ class AppointmentsTab extends StatelessWidget {
       child: Text(
         '$label: $value',
         softWrap: true,
-        style: const TextStyle(fontSize: 12, color: AppColors.grey),
+        style: const TextStyle(
+          fontSize: 12.2,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF4E5A4E),
+        ),
       ),
     );
   }
@@ -893,6 +1124,7 @@ class _AppointmentCard extends StatelessWidget {
     required this.onViewMore,
     required this.onAddTreatment,
     required this.onComplete,
+    required this.distanceLabel,
   });
 
   final DoctorAppointment appointment;
@@ -906,6 +1138,7 @@ class _AppointmentCard extends StatelessWidget {
   final VoidCallback onViewMore;
   final VoidCallback onAddTreatment;
   final VoidCallback onComplete;
+  final String distanceLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -916,10 +1149,115 @@ class _AppointmentCard extends StatelessWidget {
     final canNavigate = appointment.canNavigate;
     final hasTreatmentDetails = appointment.treatmentDetails.trim().isNotEmpty;
     final isInProgress = appointment.normalizedStatus == 'in_progress';
+    final otpVerified = appointment.otpVerifiedAt != null;
     final hasHistoryData = appointment.previousHistories.isNotEmpty ||
         appointment.recentMilkHistory.isNotEmpty ||
         appointment.recentFeedingHistory.isNotEmpty ||
         appointment.recentPregnancyHistory.isNotEmpty;
+    final actionButtons = <Widget>[];
+    Widget? fullWidthCompleteButton;
+    if (otpVerified && !isInProgress && appointment.normalizedStatus != 'completed') {
+      if (appointment.canStartTreatment) {
+        actionButtons.add(
+          _actionButton(
+            label: 'Start Treatment',
+            background: const Color(0xFF2E7D32),
+            foreground: AppColors.white,
+            onPressed: onStartTreatment,
+          ),
+        );
+      }
+      actionButtons.add(
+        _actionButton(
+          label: 'View History',
+          background: const Color(0xFFEAF5EA),
+          foreground: AppColors.primary,
+          onPressed: onViewHistory,
+        ),
+      );
+      actionButtons.add(
+        _actionButton(
+          label: 'View More',
+          background: const Color(0xFFEAF5EA),
+          foreground: AppColors.primary,
+          onPressed: onViewMore,
+        ),
+      );
+    } else {
+      if (appointment.needsOtpVerification) {
+        actionButtons.add(
+          _actionButton(
+            label: otpAlreadySent ? 'Verify OTP' : 'Send OTP',
+            background: AppColors.primary,
+            foreground: AppColors.white,
+            onPressed: onVerifyOtp,
+          ),
+        );
+      }
+      if (!otpVerified && canNavigate) {
+        actionButtons.add(
+          _actionButton(
+            label: 'View Map',
+            background: const Color(0xFFEAF5EA),
+            foreground: AppColors.primary,
+            onPressed: onMap,
+          ),
+        );
+      }
+      if (isInProgress) {
+        actionButtons.add(
+          _actionButton(
+            label: hasTreatmentDetails ? 'Edit Treatment' : 'Add Treatment',
+            background: const Color(0xFFEAF5EA),
+            foreground: AppColors.primary,
+            onPressed: onAddTreatment,
+          ),
+        );
+        actionButtons.add(
+          _actionButton(
+            label: 'View History',
+            background: const Color(0xFFEAF5EA),
+            foreground: AppColors.primary,
+            onPressed: onViewHistory,
+          ),
+        );
+        actionButtons.add(
+          _actionButton(
+            label: 'View More',
+            background: const Color(0xFFEAF5EA),
+            foreground: AppColors.primary,
+            onPressed: onViewMore,
+          ),
+        );
+      } else {
+        actionButtons.add(
+          _actionButton(
+            label: 'View More',
+            background: const Color(0xFFEAF5EA),
+            foreground: AppColors.primary,
+            onPressed: onViewMore,
+          ),
+        );
+        if (otpVerified && appointment.normalizedStatus != 'completed' && hasHistoryData) {
+          actionButtons.add(
+            _actionButton(
+              label: 'View History',
+              background: const Color(0xFFEAF5EA),
+              foreground: AppColors.primary,
+              onPressed: onViewHistory,
+            ),
+          );
+        }
+      }
+      if (isInProgress && hasTreatmentDetails) {
+        fullWidthCompleteButton = _actionButton(
+          label: 'Complete',
+          background: const Color(0xFF2E7D32),
+          foreground: AppColors.white,
+          onPressed: onComplete,
+        );
+      }
+    }
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -932,16 +1270,25 @@ class _AppointmentCard extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(
-            height: 132,
+            height: 150,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _animalImage(appointment.animalPhotoUrl),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                      Text(
+                        'ID: ${appointment.displayAppointmentCode}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                      ),
+                      const SizedBox(height: 2),
                       Text(
                         appointment.farmerName,
                         maxLines: 1,
@@ -953,21 +1300,22 @@ class _AppointmentCard extends StatelessWidget {
                         appointment.animalName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF4E5A4E),
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'ID: ${appointment.displayAppointmentCode}',
+                        appointment.address.trim().isEmpty ? '-' : appointment.address.trim(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        appointment.concern,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF4E5A4E),
+                        ),
                       ),
                       if (appointment.diseaseNames.isNotEmpty) ...[
                         const SizedBox(height: 2),
@@ -975,68 +1323,60 @@ class _AppointmentCard extends StatelessWidget {
                           'Disease: ${appointment.diseaseNames.join(', ')}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: AppColors.grey),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF4E5A4E),
+                          ),
                         ),
                       ],
-                      if (appointment.treatmentDetails.trim().isNotEmpty) ...[
+                      if (when != null) ...[
                         const SizedBox(height: 2),
                         Text(
-                          'Treatment: ${appointment.treatmentDetails}',
+                          '${DateFormat('dd-MM-yyyy').format(when.toLocal())}  ${DateFormat('hh:mm a').format(when.toLocal())}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: AppColors.grey),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF2F3A2F),
+                          ),
                         ),
                       ],
-                      const Spacer(),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: InkWell(
-                          onTap: onViewMore,
-                          child: const Padding(
-                            padding: EdgeInsets.only(top: 2),
-                            child: Text(
-                              'View more',
-                              style: TextStyle(
-                                fontSize: 12.2,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
-                                decoration: TextDecoration.underline,
-                                decorationColor: AppColors.primary,
-                              ),
-                            ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF7CB342).withValues(alpha: 0.6)),
+                        ),
+                        child: Text(
+                          'Distance: $distanceLabel',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11.8,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF2E7D32),
                           ),
                         ),
                       ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    if (when != null)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            DateFormat('dd-MM-yyyy').format(when.toLocal()),
-                            style: const TextStyle(fontSize: 11.5, color: AppColors.grey),
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            DateFormat('hh:mm a').format(when.toLocal()),
-                            style: const TextStyle(fontSize: 11.5, color: AppColors.grey),
-                          ),
-                        ],
-                      ),
-                    const SizedBox(height: 6),
                     _statusPill(status),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           if (showActionButtons)
             Row(
               children: [
@@ -1057,6 +1397,15 @@ class _AppointmentCard extends StatelessWidget {
                     onPressed: onDecline,
                   ),
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _actionButton(
+                    label: 'View More',
+                    background: const Color(0xFFEAF5EA),
+                    foreground: AppColors.primary,
+                    onPressed: onViewMore,
+                  ),
+                ),
               ],
             )
           else if (waitingApproval)
@@ -1068,66 +1417,51 @@ class _AppointmentCard extends StatelessWidget {
               ),
             )
           else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.end,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (appointment.needsOtpVerification)
-                  _actionButton(
-                    label: otpAlreadySent ? 'Verify OTP' : 'Send OTP',
-                    background: AppColors.primary,
-                    foreground: AppColors.white,
-                    onPressed: onVerifyOtp,
-                  ),
-                if (appointment.canStartTreatment)
-                  _actionButton(
-                    label: 'Start Treatment',
-                    background: const Color(0xFF2E7D32),
-                    foreground: AppColors.white,
-                    onPressed: onStartTreatment,
-                  ),
-                if (appointment.otpVerifiedAt != null &&
-                    appointment.normalizedStatus != 'completed' &&
-                    hasHistoryData)
-                  _actionButton(
-                    label: 'View History',
-                    background: const Color(0xFFEAF5EA),
-                    foreground: AppColors.primary,
-                    onPressed: onViewHistory,
-                  ),
-                if (isInProgress)
-                  _actionButton(
-                    label: hasTreatmentDetails ? 'Edit Treatment' : 'Add Treatment',
-                    background: const Color(0xFFEAF5EA),
-                    foreground: AppColors.primary,
-                    onPressed: onAddTreatment,
-                  ),
-                if (isInProgress && hasTreatmentDetails)
-                  _actionButton(
-                    label: 'Complete',
-                    background: const Color(0xFF2E7D32),
-                    foreground: AppColors.white,
-                    onPressed: onComplete,
-                  ),
-                if (canNavigate)
-                  InkWell(
-                    onTap: onMap,
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      height: 30,
-                      width: 30,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(Icons.navigation_rounded, size: 16, color: AppColors.primary),
-                    ),
-                  ),
+                _buildActionGrid(actionButtons),
+                if (fullWidthCompleteButton != null) ...[
+                  const SizedBox(height: 8),
+                  fullWidthCompleteButton,
+                ],
               ],
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildActionGrid(List<Widget> actions) {
+    if (actions.isEmpty) return const SizedBox.shrink();
+    const columns = 3;
+    final rows = <Widget>[];
+
+    for (var start = 0; start < actions.length; start += columns) {
+      final end = (start + columns) > actions.length ? actions.length : (start + columns);
+      final slice = actions.sublist(start, end);
+
+      rows.add(
+        Row(
+          children: List.generate(columns * 2 - 1, (index) {
+            if (index.isOdd) return const SizedBox(width: 8);
+            final columnIndex = index ~/ 2;
+            if (columnIndex < slice.length) {
+              return Expanded(child: slice[columnIndex]);
+            }
+            return const Expanded(child: SizedBox.shrink());
+          }),
+        ),
+      );
+
+      if (end < actions.length) {
+        rows.add(const SizedBox(height: 8));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
     );
   }
 
@@ -1213,7 +1547,9 @@ class _AppointmentCard extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: const TextStyle(fontSize: 11.2, fontWeight: FontWeight.w700),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 10.6, fontWeight: FontWeight.w700),
         ),
       ),
     );

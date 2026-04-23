@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -27,13 +29,18 @@ class HomeController extends GetxController {
   final notificationHistory = <DoctorNotificationItem>[].obs;
   final appointments = <DoctorAppointment>[].obs;
   final otpRequestedAppointmentIds = <int>{}.obs;
+  final currentDoctorLatitude = Rxn<double>();
+  final currentDoctorLongitude = Rxn<double>();
+  final appointmentDistanceLabels = <int, String>{}.obs;
   final banners = <DoctorBannerItem>[].obs;
   final appSettings = Rxn<DoctorSettings>();
   final ApiService _apiService = ApiService();
   final FirebaseMessagingService _firebaseMessagingService = FirebaseMessagingService();
+  final Map<String, _GeoPoint> _farmerAddressCache = {};
 
   Timer? _profileSyncTimer;
-  Timer? _liveLocationTimer;
+  StreamSubscription<Position>? _doctorLocationSubscription;
+  _GeoPoint? _lastSyncedDoctorPoint;
   int? _loadedNotificationDoctorId;
 
   @override
@@ -44,14 +51,14 @@ class HomeController extends GetxController {
     refreshAppointments();
     refreshSettings();
     _startRealtimeDoctorSync();
-    _startLiveLocationSync();
+    _syncLiveTrackingForAvailability();
     initialiseNotifications();
   }
 
   @override
   void onClose() {
     _profileSyncTimer?.cancel();
-    _liveLocationTimer?.cancel();
+    _doctorLocationSubscription?.cancel();
     super.onClose();
   }
 
@@ -60,13 +67,6 @@ class HomeController extends GetxController {
     _profileSyncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       refreshProfile();
       refreshSettings();
-    });
-  }
-
-  void _startLiveLocationSync() {
-    _liveLocationTimer?.cancel();
-    _liveLocationTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-      _pushLiveLocationForActiveAppointments();
     });
   }
 
@@ -90,6 +90,7 @@ class HomeController extends GetxController {
       final freshProfile = await _apiService.fetchProfile(current.id);
       profile.value = freshProfile;
       await SessionService.saveProfile(freshProfile);
+      _syncLiveTrackingForAvailability();
       await _ensureNotificationHistoryLoadedForDoctor(freshProfile.id);
       notifications.assignAll(_buildNotifications(freshProfile));
     } catch (_) {
@@ -116,6 +117,7 @@ class HomeController extends GetxController {
       );
       profile.value = updated;
       await SessionService.saveProfile(updated);
+      _syncLiveTrackingForAvailability();
       await _ensureNotificationHistoryLoadedForDoctor(updated.id);
       notifications.assignAll(_buildNotifications(updated));
       Get.snackbar('Profile Updated', successMessage);
@@ -132,6 +134,7 @@ class HomeController extends GetxController {
       appointmentLoading.value = true;
       final list = await _apiService.fetchDoctorAppointments(doctorId: currentProfile.id);
       appointments.assignAll(list);
+      await _refreshAppointmentDistanceLabels();
       final liveIds = list.map((item) => item.id).toSet();
       otpRequestedAppointmentIds.removeWhere((id) => !liveIds.contains(id));
       for (final item in list) {
@@ -143,14 +146,13 @@ class HomeController extends GetxController {
       // Keep last real API state; never inject demo data.
     } finally {
       appointmentLoading.value = false;
-      _pushLiveLocationForActiveAppointments();
+      if (profile.value?.isActiveForAppointments == true) {
+        _refreshCurrentLocation();
+      }
     }
   }
 
-  Future<void> _pushLiveLocationForActiveAppointments() async {
-    final active = appointments.where((a) => a.canNavigate).toList();
-    if (active.isEmpty) return;
-
+  Future<void> _refreshCurrentLocation({bool syncBackend = false}) async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
@@ -166,15 +168,116 @@ class HomeController extends GetxController {
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
-
-      for (final appointment in active) {
-        await updateAppointmentLiveLocation(
-          appointment: appointment,
+      currentDoctorLatitude.value = pos.latitude;
+      currentDoctorLongitude.value = pos.longitude;
+      await _refreshAppointmentDistanceLabels();
+      if (syncBackend && profile.value?.isActiveForAppointments == true) {
+        _lastSyncedDoctorPoint = _GeoPoint(pos.latitude, pos.longitude);
+        await _syncDoctorLiveLocation(pos.latitude, pos.longitude);
+        await _pushLiveLocationForActiveAppointmentsFrom(
           latitude: pos.latitude,
           longitude: pos.longitude,
         );
       }
     } catch (_) {}
+  }
+
+  Future<void> _refreshAppointmentDistanceLabels() async {
+    final doctorLat = currentDoctorLatitude.value;
+    final doctorLng = currentDoctorLongitude.value;
+    if (doctorLat == null || doctorLng == null) return;
+
+    final next = <int, String>{};
+    for (final appointment in appointments) {
+      next[appointment.id] = await _distanceFromAddress(
+        doctorLat: doctorLat,
+        doctorLng: doctorLng,
+        farmerAddress: appointment.address,
+      );
+    }
+    appointmentDistanceLabels.assignAll(next);
+  }
+
+  Future<String> _distanceFromAddress({
+    required double doctorLat,
+    required double doctorLng,
+    required String farmerAddress,
+  }) async {
+    final address = farmerAddress.trim();
+    if (address.isEmpty) return '--';
+
+    try {
+      _GeoPoint? point = _farmerAddressCache[address];
+      if (point == null) {
+        point = await _geocodeAddress(address);
+        if (point == null) return '--';
+        _farmerAddressCache[address] = point;
+      }
+
+      final meters = Geolocator.distanceBetween(
+        doctorLat,
+        doctorLng,
+        point.latitude,
+        point.longitude,
+      );
+      return _formatDistance(meters);
+    } catch (_) {
+      return '--';
+    }
+  }
+
+  Future<_GeoPoint?> _geocodeAddress(String address) async {
+    try {
+      final locations = await locationFromAddress(address);
+      if (locations.isNotEmpty) {
+        final first = locations.first;
+        return _GeoPoint(first.latitude, first.longitude);
+      }
+    } catch (_) {}
+
+    try {
+      final uri = Uri.https(
+        'nominatim.openstreetmap.org',
+        '/search',
+        {
+          'q': address,
+          'format': 'jsonv2',
+          'limit': '1',
+        },
+      );
+      final response = await http.get(
+        uri,
+        headers: const {
+          'Accept': 'application/json',
+          'User-Agent': 'CorzinDoctor/1.0',
+        },
+      );
+      if (response.statusCode != 200 || response.body.isEmpty) return null;
+      final data = jsonDecode(response.body);
+      if (data is! List || data.isEmpty) return null;
+      final row = data.first;
+      if (row is! Map) return null;
+      final lat = double.tryParse(row['lat']?.toString() ?? '');
+      final lng = double.tryParse(row['lon']?.toString() ?? '');
+      if (lat == null || lng == null) return null;
+      return _GeoPoint(lat, lng);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _formatDistance(double meters) {
+    final absMeters = meters.abs();
+    if (absMeters < 0.01) {
+      return '${(absMeters * 1000).toStringAsFixed(2)} mm';
+    }
+    if (absMeters < 1.0) {
+      return '${(absMeters * 100).toStringAsFixed(2)} cm';
+    }
+    if (absMeters < 1000) {
+      return '${absMeters.toStringAsFixed(2)} m';
+    }
+    return '${(absMeters / 1000).toStringAsFixed(2)} km';
   }
 
   List<String> _buildNotifications(DoctorProfile doctor) {
@@ -349,9 +452,10 @@ class HomeController extends GetxController {
       await _apiService.doctorDecision(
         appointmentId: appointment.id,
         action: 'approved',
+        sendOtp: false,
       );
       await refreshAppointments();
-      Get.snackbar('Approved', 'Appointment approved successfully.');
+      Get.snackbar('Accepted', 'Appointment accepted successfully.');
     } catch (_) {
       _upsertAppointment(appointment.copyWith(status: 'approved'));
       Get.snackbar('Saved In App', 'Approved locally. Backend sync pending.');
@@ -398,13 +502,39 @@ class HomeController extends GetxController {
     }
   }
 
-  Future<void> markAppointmentCompleted(DoctorAppointment appointment) async {
+  Future<void> markAppointmentCompleted(
+    DoctorAppointment appointment, {
+    double? fees,
+    double? onSiteMedicineCharges,
+  }) async {
+    final resolvedFees = fees ?? appointment.fees ?? 0;
+    final resolvedOnsite = onSiteMedicineCharges ?? appointment.onSiteMedicineCharges ?? 0;
+    final total = resolvedFees + resolvedOnsite;
     try {
-      await _apiService.completeAppointment(appointmentId: appointment.id);
-      _upsertAppointment(appointment.copyWith(status: 'completed'));
+      await _apiService.completeAppointment(
+        appointmentId: appointment.id,
+        charges: total,
+        fees: resolvedFees,
+        onSiteMedicineCharges: resolvedOnsite,
+      );
+      _upsertAppointment(
+        appointment.copyWith(
+          status: 'completed',
+          charges: total,
+          fees: resolvedFees,
+          onSiteMedicineCharges: resolvedOnsite,
+        ),
+      );
       Get.snackbar('Visit Completed', 'Appointment marked as completed.');
     } catch (_) {
-      _upsertAppointment(appointment.copyWith(status: 'completed'));
+      _upsertAppointment(
+        appointment.copyWith(
+          status: 'completed',
+          charges: total,
+          fees: resolvedFees,
+          onSiteMedicineCharges: resolvedOnsite,
+        ),
+      );
       Get.snackbar('Saved In App', 'Marked as completed in app preview.');
     }
   }
@@ -452,6 +582,7 @@ class HomeController extends GetxController {
       final response = await _apiService.doctorDecision(
         appointmentId: appointment.id,
         action: 'approved',
+        sendOtp: true,
       );
       debugPrint('[OTP][CTRL] sendAppointmentOtp response: $response');
 
@@ -634,6 +765,7 @@ class HomeController extends GetxController {
     }
     appointments[index] = updated;
     appointments.refresh();
+    _refreshAppointmentDistanceLabels();
   }
 
   Future<void> clearNotificationHistory() async {
@@ -694,6 +826,139 @@ class HomeController extends GetxController {
     } catch (_) {}
   }
 
+  Future<void> confirmAndToggleAvailability() async {
+    final current = profile.value;
+    if (current == null) return;
+
+    final nextActive = !current.isActiveForAppointments;
+    final title = nextActive ? 'Set Active' : 'Set Inactive';
+    final message = nextActive
+        ? 'Are you want to active for appointments?'
+        : 'Are you want to inactive for appointments?';
+
+    final confirmed = await Get.dialog<bool>(
+          AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(result: false),
+                child: const Text('No'),
+              ),
+              ElevatedButton(
+                onPressed: () => Get.back(result: true),
+                child: Text(nextActive ? 'Active' : 'Inactive'),
+              ),
+            ],
+          ),
+          barrierDismissible: true,
+        ) ??
+        false;
+
+    if (!confirmed) return;
+
+    try {
+      final updated = await _apiService.updateDoctorAvailability(
+        doctorId: current.id,
+        isActive: nextActive,
+      );
+      profile.value = updated;
+      await SessionService.saveProfile(updated);
+      notifications.assignAll(_buildNotifications(updated));
+      _syncLiveTrackingForAvailability();
+      if (nextActive) {
+        await _refreshCurrentLocation(syncBackend: true);
+      }
+      Get.snackbar(
+        'Status Updated',
+        nextActive ? 'You are active for appointments.' : 'You are inactive for appointments.',
+      );
+    } catch (e) {
+      Get.snackbar('Update Failed', e.toString());
+    }
+  }
+
+  void _syncLiveTrackingForAvailability() {
+    final active = profile.value?.isActiveForAppointments == true;
+    if (!active) {
+      _doctorLocationSubscription?.cancel();
+      _doctorLocationSubscription = null;
+      _lastSyncedDoctorPoint = null;
+      return;
+    }
+
+    if (_doctorLocationSubscription != null) return;
+
+    _doctorLocationSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 100,
+      ),
+    ).listen((position) {
+      _handleDoctorPosition(position);
+    });
+
+    _refreshCurrentLocation(syncBackend: true);
+  }
+
+  Future<void> _handleDoctorPosition(Position position) async {
+    currentDoctorLatitude.value = position.latitude;
+    currentDoctorLongitude.value = position.longitude;
+    await _refreshAppointmentDistanceLabels();
+
+    final currentPoint = _GeoPoint(position.latitude, position.longitude);
+    if (_lastSyncedDoctorPoint != null) {
+      final moved = Geolocator.distanceBetween(
+        _lastSyncedDoctorPoint!.latitude,
+        _lastSyncedDoctorPoint!.longitude,
+        currentPoint.latitude,
+        currentPoint.longitude,
+      );
+      if (moved < 95) {
+        return;
+      }
+    }
+
+    _lastSyncedDoctorPoint = currentPoint;
+    await _syncDoctorLiveLocation(position.latitude, position.longitude);
+    await _pushLiveLocationForActiveAppointmentsFrom(
+      latitude: position.latitude,
+      longitude: position.longitude,
+    );
+  }
+
+  Future<void> _syncDoctorLiveLocation(double latitude, double longitude) async {
+    final current = profile.value;
+    if (current == null || !current.isActiveForAppointments) return;
+
+    try {
+      final updated = await _apiService.updateDoctorLiveLocation(
+        doctorId: current.id,
+        latitude: latitude,
+        longitude: longitude,
+      );
+      profile.value = updated;
+      await SessionService.saveProfile(updated);
+    } catch (_) {}
+  }
+
+  Future<void> _pushLiveLocationForActiveAppointmentsFrom({
+    required double latitude,
+    required double longitude,
+  }) async {
+    if (profile.value?.isActiveForAppointments != true) return;
+    final active = appointments.where((a) => a.canNavigate).toList();
+    if (active.isEmpty) return;
+
+    for (final appointment in active) {
+      await updateAppointmentLiveLocation(
+        appointment: appointment,
+        latitude: latitude,
+        longitude: longitude,
+      );
+    }
+  }
+
   void _addNotificationEntry({
     required String title,
     required String body,
@@ -721,10 +986,17 @@ class HomeController extends GetxController {
 
   Future<void> logout() async {
     _profileSyncTimer?.cancel();
-    _liveLocationTimer?.cancel();
+    _doctorLocationSubscription?.cancel();
     await SessionService.logout();
     Get.offAllNamed(AppRoutes.login);
   }
+}
+
+class _GeoPoint {
+  const _GeoPoint(this.latitude, this.longitude);
+
+  final double latitude;
+  final double longitude;
 }
 
 class DoctorNotificationItem {

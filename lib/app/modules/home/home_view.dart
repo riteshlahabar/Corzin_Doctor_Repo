@@ -709,7 +709,9 @@ class _VisitsTab extends StatelessWidget {
                       .map(
                         (appointment) => _VisitCard(
                           appointment: appointment,
-                          onComplete: appointment.canComplete ? () => controller.markAppointmentCompleted(appointment) : null,
+                          onComplete: appointment.canComplete
+                              ? () => _openCompleteWithChargesSheet(context, appointment)
+                              : null,
                         ),
                       )
                       .toList(),
@@ -718,6 +720,134 @@ class _VisitsTab extends StatelessWidget {
         ],
       );
     });
+  }
+
+  Future<void> _openCompleteWithChargesSheet(
+    BuildContext context,
+    DoctorAppointment appointment,
+  ) async {
+    final feesController = TextEditingController(
+      text: appointment.fees != null
+          ? appointment.fees!.toStringAsFixed(0)
+          : ((appointment.charges ?? 0) > 0 ? appointment.charges!.toStringAsFixed(0) : ''),
+    );
+    final onSiteMedicineChargesController = TextEditingController(
+      text: appointment.onSiteMedicineCharges != null
+          ? appointment.onSiteMedicineCharges!.toStringAsFixed(0)
+          : '',
+    );
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useRootNavigator: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (sheetContext) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              final parsedFees = double.tryParse(feesController.text.trim());
+              final parsedOnSiteMedicineCharges =
+                  double.tryParse(onSiteMedicineChargesController.text.trim()) ?? 0;
+              final canSubmit = parsedFees != null && parsedFees > 0;
+
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Complete Appointment',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Enter final charges to complete this appointment.',
+                      style: TextStyle(fontSize: 12.5, color: AppColors.grey),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: feesController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(fontSize: 12.2),
+                      decoration: const InputDecoration(
+                        labelText: 'Fees',
+                        prefixText: 'Rs ',
+                        hintText: 'Enter visit fees',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        labelStyle: TextStyle(fontSize: 12),
+                        hintStyle: TextStyle(fontSize: 11.5),
+                        floatingLabelStyle: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: onSiteMedicineChargesController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(fontSize: 12.2),
+                      decoration: const InputDecoration(
+                        labelText: 'On Site Medicine Charges',
+                        prefixText: 'Rs ',
+                        hintText: 'Enter on site medicine charges',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        labelStyle: TextStyle(fontSize: 12),
+                        hintStyle: TextStyle(fontSize: 11.5),
+                        floatingLabelStyle: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Total: Rs ${(canSubmit ? (parsedFees! + parsedOnSiteMedicineCharges) : 0).toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: canSubmit
+                            ? () async {
+                                Navigator.of(sheetContext).pop();
+                                await controller.markAppointmentCompleted(
+                                  appointment,
+                                  fees: parsedFees,
+                                  onSiteMedicineCharges: parsedOnSiteMedicineCharges,
+                                );
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.white,
+                        ),
+                        child: const Text('Submit'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      feesController.dispose();
+      onSiteMedicineChargesController.dispose();
+    }
   }
 }
 

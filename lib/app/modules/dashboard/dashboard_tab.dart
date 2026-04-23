@@ -42,10 +42,18 @@ class _DashboardTabState extends State<DashboardTab> {
         return slot != null && sameDay(slot, now);
       }).length;
 
-      final completed = list.where((item) => item.normalizedStatus == 'completed').length;
-      final pending = list.where((item) => item.canFixAppointment || item.waitingForFarmerApproval).length;
+      final completed = list.where((item) {
+        if (item.normalizedStatus != 'completed') return false;
+        final slot = (item.completedAt ?? item.scheduledAt ?? item.requestedAt)?.toLocal();
+        return slot != null && sameDay(slot, now);
+      }).length;
+      final pending = list.where((item) {
+        if (!(item.canFixAppointment || item.waitingForFarmerApproval)) return false;
+        final slot = (item.requestedAt ?? item.scheduledAt)?.toLocal();
+        return slot != null && sameDay(slot, now);
+      }).length;
       final earnings = list.where((item) {
-        final slot = item.scheduledAt?.toLocal();
+        final slot = (item.completedAt ?? item.scheduledAt ?? item.requestedAt)?.toLocal();
         return slot != null && sameDay(slot, now) && item.normalizedStatus == 'completed';
       }).fold<double>(0, (sum, item) => sum + (item.charges ?? 0));
 
@@ -107,6 +115,35 @@ class _DashboardTabState extends State<DashboardTab> {
                       ),
                     ),
                   ),
+                  Obx(() {
+                    final isActive = widget.controller.profile.value?.isActiveForAppointments == true;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        onTap: widget.controller.confirmAndToggleAvailability,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          height: 32,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: isActive
+                                ? const Color(0xFF2E7D32)
+                                : const Color(0xFFB71C1C),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            isActive ? 'Active' : 'Inactive',
+                            style: const TextStyle(
+                              color: AppColors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
                   Obx(() {
                     final count = widget.controller.notificationHistory.length;
                     return Stack(
@@ -196,7 +233,7 @@ class _DashboardTabState extends State<DashboardTab> {
                 children: [
                   Row(
                     children: [
-                      Expanded(child: _SmallInfoCard(title: 'Today Visits', value: '$todayVisits')),
+                      Expanded(child: _SmallInfoCard(title: 'Visits', value: '$todayVisits')),
                       const SizedBox(width: 10),
                       Expanded(child: _SmallInfoCard(title: 'Pending', value: '$pending')),
                     ],

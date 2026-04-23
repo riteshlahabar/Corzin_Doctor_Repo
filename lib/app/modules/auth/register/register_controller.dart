@@ -1,3 +1,4 @@
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -10,6 +11,7 @@ class RegisterController extends GetxController {
   final isSubmitting = false.obs;
   final agreeTerms = false.obs;
   final termsText = 'Terms content is managed from backend and accepted during registration.'.obs;
+  final isLocationLoading = false.obs;
 
   final firstNameController = TextEditingController();
   final lastNameController = TextEditingController();
@@ -41,12 +43,18 @@ class RegisterController extends GetxController {
   }.obs;
 
   final ApiService _apiService = ApiService();
+  final states = <String>[].obs;
+  final districts = <String>[].obs;
+  final talukas = <String>[].obs;
+  int _stateRequestToken = 0;
+  int _districtRequestToken = 0;
 
   @override
   void onInit() {
     super.onInit();
     stateController.text = 'Maharashtra';
     _loadSettings();
+    _loadLocationCascade();
   }
 
   @override
@@ -62,6 +70,86 @@ class RegisterController extends GetxController {
         termsText.value = settings.termsAndConditions.trim();
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadLocationCascade() async {
+    isLocationLoading.value = true;
+    try {
+      final stateList = await _apiService.fetchLocationStates();
+      states.assignAll(_uniqueLocationValues(stateList));
+
+      if (!states.contains(stateController.text.trim())) {
+        stateController.text = states.contains('Maharashtra')
+            ? 'Maharashtra'
+            : (states.isNotEmpty ? states.first : 'Maharashtra');
+      }
+
+      await onStateChanged(stateController.text.trim(), autoSelectFirst: false);
+    } catch (_) {
+      if (states.isEmpty) {
+        states.assignAll(['Maharashtra']);
+        stateController.text = 'Maharashtra';
+      }
+    } finally {
+      isLocationLoading.value = false;
+    }
+  }
+
+  Future<void> onStateChanged(String state, {bool autoSelectFirst = false}) async {
+    final selected = state.trim();
+    if (selected.isEmpty) return;
+    final token = ++_stateRequestToken;
+    _districtRequestToken++;
+
+    stateController.text = selected;
+    districtController.clear();
+    talukaController.clear();
+    cityController.clear();
+    districts.clear();
+    talukas.clear();
+
+    try {
+      final districtList = await _apiService.fetchLocationDistricts(state: selected);
+      if (token != _stateRequestToken || stateController.text.trim() != selected) return;
+      districts.assignAll(_uniqueLocationValues(districtList));
+      if (autoSelectFirst && districts.isNotEmpty) {
+        await onDistrictChanged(districts.first, autoSelectFirst: true);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> onDistrictChanged(String district, {bool autoSelectFirst = false}) async {
+    final selectedState = stateController.text.trim();
+    final selectedDistrict = district.trim();
+    if (selectedState.isEmpty || selectedDistrict.isEmpty) return;
+    final token = ++_districtRequestToken;
+
+    districtController.text = selectedDistrict;
+    talukaController.clear();
+    cityController.clear();
+    talukas.clear();
+
+    try {
+      final talukaList = await _apiService.fetchLocationTalukas(
+        state: selectedState,
+        district: selectedDistrict,
+      );
+      if (token != _districtRequestToken) return;
+      if (stateController.text.trim() != selectedState) return;
+      if (districtController.text.trim() != selectedDistrict) return;
+      talukas.assignAll(_uniqueLocationValues(talukaList));
+      if (autoSelectFirst && talukas.isNotEmpty) {
+        await onTalukaChanged(talukas.first, autoSelectFirst: true);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> onTalukaChanged(String taluka, {bool autoSelectFirst = false}) async {
+    final selectedTaluka = taluka.trim();
+    if (selectedTaluka.isEmpty) return;
+
+    talukaController.text = selectedTaluka;
+    cityController.text = selectedTaluka;
   }
 
   Future<void> pickFile(String key, {bool imageOnly = false}) async {
@@ -115,7 +203,7 @@ class RegisterController extends GetxController {
           'clinic_registration_number': clinicRegController.text.trim(),
           'clinic_address': clinicAddressController.text.trim(),
           'village': villageController.text.trim(),
-          'city': cityController.text.trim(),
+          'city': talukaController.text.trim(),
           'taluka': talukaController.text.trim(),
           'district': districtController.text.trim(),
           'state': stateController.text.trim(),
@@ -161,5 +249,16 @@ class RegisterController extends GetxController {
       controller.dispose();
     }
     super.onClose();
+  }
+
+  List<String> _uniqueLocationValues(List<String> values) {
+    final unique = <String, String>{};
+    for (final raw in values) {
+      final value = raw.trim();
+      if (value.isEmpty) continue;
+      final key = value.toLowerCase();
+      unique.putIfAbsent(key, () => value);
+    }
+    return unique.values.toList(growable: false);
   }
 }

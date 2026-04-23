@@ -12,6 +12,8 @@ class DoctorAppointment {
     this.treatmentStartedAt,
     this.doctorLiveUpdatedAt,
     this.charges,
+    this.fees,
+    this.onSiteMedicineCharges,
     this.animalPhotoUrl = '',
     this.latitude,
     this.longitude,
@@ -45,6 +47,8 @@ class DoctorAppointment {
   final DateTime? treatmentStartedAt;
   final DateTime? doctorLiveUpdatedAt;
   final double? charges;
+  final double? fees;
+  final double? onSiteMedicineCharges;
   final String animalPhotoUrl;
   final double? latitude;
   final double? longitude;
@@ -144,6 +148,8 @@ class DoctorAppointment {
     DateTime? treatmentStartedAt,
     DateTime? doctorLiveUpdatedAt,
     double? charges,
+    double? fees,
+    double? onSiteMedicineCharges,
     String? animalPhotoUrl,
     double? latitude,
     double? longitude,
@@ -177,6 +183,8 @@ class DoctorAppointment {
       treatmentStartedAt: treatmentStartedAt ?? this.treatmentStartedAt,
       doctorLiveUpdatedAt: doctorLiveUpdatedAt ?? this.doctorLiveUpdatedAt,
       charges: charges ?? this.charges,
+      fees: fees ?? this.fees,
+      onSiteMedicineCharges: onSiteMedicineCharges ?? this.onSiteMedicineCharges,
       animalPhotoUrl: animalPhotoUrl ?? this.animalPhotoUrl,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
@@ -350,6 +358,8 @@ class DoctorAppointment {
       treatmentStartedAt: parseDate(json['treatment_started_at']),
       doctorLiveUpdatedAt: parseDate(json['doctor_live_updated_at']),
       charges: parseDouble(json['charges']),
+      fees: parseDouble(json['fees']),
+      onSiteMedicineCharges: parseDouble(json['on_site_medicine_charges']),
       animalPhotoUrl: (json['animal_photo_url'] ?? json['animal_photo'] ?? json['animal_image'] ?? json['cow_photo'] ?? '').toString(),
       latitude: parseDouble(json['latitude'] ?? json['lat']),
       longitude: parseDouble(json['longitude'] ?? json['lng']),
@@ -379,6 +389,9 @@ class DoctorAppointmentHistory {
     required this.concern,
     required this.treatmentDetails,
     required this.onsiteTreatment,
+    this.fees,
+    this.onSiteMedicineCharges,
+    this.totalCharges,
     required this.notes,
     this.completedAt,
   });
@@ -387,6 +400,9 @@ class DoctorAppointmentHistory {
   final String concern;
   final String treatmentDetails;
   final String onsiteTreatment;
+  final double? fees;
+  final double? onSiteMedicineCharges;
+  final double? totalCharges;
   final String notes;
   final DateTime? completedAt;
 
@@ -404,11 +420,20 @@ class DoctorAppointmentHistory {
       return int.tryParse(value.toString()) ?? 0;
     }
 
+    double? parseDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      return double.tryParse(value.toString());
+    }
+
     return DoctorAppointmentHistory(
       id: parseInt(json['id']),
       concern: (json['concern'] ?? '').toString(),
       treatmentDetails: (json['treatment_details'] ?? '').toString(),
       onsiteTreatment: (json['onsite_treatment'] ?? '').toString(),
+      fees: parseDouble(json['fees']),
+      onSiteMedicineCharges: parseDouble(json['on_site_medicine_charges']),
+      totalCharges: parseDouble(json['total_charges'] ?? json['charges']),
       notes: (json['notes'] ?? '').toString(),
       completedAt: parseDate(json['completed_at']),
     );

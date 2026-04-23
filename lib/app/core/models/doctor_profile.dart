@@ -19,6 +19,10 @@ class DoctorProfile {
     required this.state,
     required this.pincode,
     required this.status,
+    required this.isActiveForAppointments,
+    this.latitude,
+    this.longitude,
+    this.lastLiveLocationAt,
     required this.termsText,
     required this.photoUrl,
     required this.documents,
@@ -43,6 +47,10 @@ class DoctorProfile {
   final String state;
   final String pincode;
   final String status;
+  final bool isActiveForAppointments;
+  final double? latitude;
+  final double? longitude;
+  final DateTime? lastLiveLocationAt;
   final String termsText;
   final String photoUrl;
   final Map<String, String> documents;
@@ -72,6 +80,11 @@ class DoctorProfile {
       state: json['state'] ?? '',
       pincode: json['pincode'] ?? '',
       status: json['status'] ?? 'pending',
+      isActiveForAppointments: json['is_active_for_appointments'] == true ||
+          json['is_active_for_appointments']?.toString() == '1',
+      latitude: _toDouble(json['latitude']),
+      longitude: _toDouble(json['longitude']),
+      lastLiveLocationAt: DateTime.tryParse((json['last_live_location_at'] ?? '').toString()),
       termsText: json['terms_text'] ?? '',
       photoUrl: json['doctor_photo_url'] ?? '',
       documents: Map<String, String>.from(json['documents'] ?? const {}),
@@ -99,9 +112,19 @@ class DoctorProfile {
       'state': state,
       'pincode': pincode,
       'status': status,
+      'is_active_for_appointments': isActiveForAppointments,
+      'latitude': latitude,
+      'longitude': longitude,
+      'last_live_location_at': lastLiveLocationAt?.toIso8601String(),
       'terms_text': termsText,
       'doctor_photo_url': photoUrl,
       'documents': documents,
     };
+  }
+
+  static double? _toDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
   }
 }

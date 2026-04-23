@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'dart:collection';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/document_picker_tile.dart';
@@ -9,37 +10,6 @@ import 'register_controller.dart';
 
 class RegisterView extends GetView<RegisterController> {
   const RegisterView({super.key});
-
-  static const List<String> _states = [
-    'Andhra Pradesh',
-    'Arunachal Pradesh',
-    'Assam',
-    'Bihar',
-    'Chhattisgarh',
-    'Goa',
-    'Gujarat',
-    'Haryana',
-    'Himachal Pradesh',
-    'Jharkhand',
-    'Karnataka',
-    'Kerala',
-    'Madhya Pradesh',
-    'Maharashtra',
-    'Manipur',
-    'Meghalaya',
-    'Mizoram',
-    'Nagaland',
-    'Odisha',
-    'Punjab',
-    'Rajasthan',
-    'Sikkim',
-    'Tamil Nadu',
-    'Telangana',
-    'Tripura',
-    'Uttar Pradesh',
-    'Uttarakhand',
-    'West Bengal',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -148,33 +118,60 @@ class RegisterView extends GetView<RegisterController> {
                 const SizedBox(height: 24),
                 _sectionTitle('Location Details'),
                 const SizedBox(height: 14),
-                _twoColumn(
-                  DoctorTextField(
-                    controller: controller.villageController,
-                    label: 'Village',
-                    validator: (value) => controller.requiredValidator(value, 'Village'),
-                  ),
-                  DoctorTextField(
-                    controller: controller.cityController,
-                    label: 'City',
-                    validator: (value) => controller.requiredValidator(value, 'City'),
+                Obx(
+                  () => _dropdownField(
+                    label: 'State',
+                    value: controller.stateController.text.trim().isEmpty
+                        ? null
+                        : controller.stateController.text.trim(),
+                    items: controller.states,
+                    enabled: !controller.isLocationLoading.value,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      controller.onStateChanged(value);
+                    },
+                    validator: (value) => controller.requiredValidator(value, 'State'),
                   ),
                 ),
                 const SizedBox(height: 14),
-                _twoColumn(
-                  DoctorTextField(
-                    controller: controller.talukaController,
-                    label: 'Taluka',
-                    validator: (value) => controller.requiredValidator(value, 'Taluka'),
-                  ),
-                  DoctorTextField(
-                    controller: controller.districtController,
+                Obx(
+                  () => _dropdownField(
                     label: 'District',
+                    value: controller.districtController.text.trim().isEmpty
+                        ? null
+                        : controller.districtController.text.trim(),
+                    items: controller.districts,
+                    enabled: controller.districts.isNotEmpty,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      controller.onDistrictChanged(value);
+                    },
                     validator: (value) => controller.requiredValidator(value, 'District'),
                   ),
                 ),
                 const SizedBox(height: 14),
-                _stateDropdownField(),
+                Obx(
+                  () => _dropdownField(
+                    label: 'Taluka / Subdistrict / City',
+                    value: controller.talukaController.text.trim().isEmpty
+                        ? null
+                        : controller.talukaController.text.trim(),
+                    items: controller.talukas,
+                    enabled: controller.talukas.isNotEmpty,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      controller.onTalukaChanged(value);
+                    },
+                    validator: (value) =>
+                        controller.requiredValidator(value, 'Taluka / Subdistrict / City'),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                DoctorTextField(
+                  controller: controller.villageController,
+                  label: 'Village',
+                  validator: (value) => controller.requiredValidator(value, 'Village'),
+                ),
                 const SizedBox(height: 14),
                 DoctorTextField(
                   controller: controller.pincodeController,
@@ -323,13 +320,27 @@ class RegisterView extends GetView<RegisterController> {
     );
   }
 
-  Widget _stateDropdownField() {
+  Widget _dropdownField({
+    required String label,
+    required String? value,
+    required List<String> items,
+    required bool enabled,
+    required ValueChanged<String?> onChanged,
+    required String? Function(String?) validator,
+  }) {
+    final uniqueItems = LinkedHashSet<String>.from(
+      items.map((item) => item.trim()).where((item) => item.isNotEmpty),
+    ).toList(growable: false);
+    final selectedValue = (value != null && uniqueItems.contains(value.trim()))
+        ? value.trim()
+        : null;
     return DropdownButtonFormField<String>(
-      initialValue: controller.stateController.text.trim().isEmpty
-          ? 'Maharashtra'
-          : controller.stateController.text.trim(),
+      key: ValueKey('$label|${uniqueItems.length}|${selectedValue ?? ''}'),
+      initialValue: selectedValue,
+      isExpanded: true,
+      hint: Text('Select $label'),
       decoration: InputDecoration(
-        labelText: 'State',
+        labelText: label,
         filled: true,
         fillColor: AppColors.white,
         border: OutlineInputBorder(
@@ -346,18 +357,16 @@ class RegisterView extends GetView<RegisterController> {
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       ),
-      items: _states
+      items: uniqueItems
           .map(
-            (state) => DropdownMenuItem<String>(
-              value: state,
-              child: Text(state),
+            (item) => DropdownMenuItem<String>(
+              value: item,
+              child: Text(item, overflow: TextOverflow.ellipsis),
             ),
           )
           .toList(),
-      onChanged: (value) {
-        controller.stateController.text = value ?? 'Maharashtra';
-      },
-      validator: (value) => controller.requiredValidator(value, 'State'),
+      onChanged: enabled ? onChanged : null,
+      validator: validator,
     );
   }
 }

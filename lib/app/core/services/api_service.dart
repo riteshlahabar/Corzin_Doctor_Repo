@@ -96,6 +96,38 @@ class ApiService {
     _parseResponse(response);
   }
 
+  Future<DoctorProfile> updateDoctorAvailability({
+    required int doctorId,
+    required bool isActive,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/availability/$doctorId'),
+      headers: {'Accept': 'application/json'},
+      body: {
+        'is_active': isActive ? '1' : '0',
+      },
+    );
+    final body = _parseResponse(response);
+    return DoctorProfile.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  Future<DoctorProfile> updateDoctorLiveLocation({
+    required int doctorId,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/live-location/$doctorId'),
+      headers: {'Accept': 'application/json'},
+      body: {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+      },
+    );
+    final body = _parseResponse(response);
+    return DoctorProfile.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
   Future<DoctorProfile> fetchProfile(int doctorId) async {
     final response = await _client.get(
       Uri.parse('${ApiConstants.baseUrl}/doctor/profile/$doctorId'),
@@ -186,6 +218,65 @@ class ApiService {
     return DoctorSettings.fromJson(body['data'] as Map<String, dynamic>);
   }
 
+  Future<List<String>> fetchLocationStates() async {
+    final response = await _client.get(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/locations/states'),
+      headers: {'Accept': 'application/json'},
+    );
+    final body = _parseResponse(response);
+    return _parseStringList(body['data']);
+  }
+
+  Future<List<String>> fetchLocationDistricts({required String state}) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/doctor/locations/districts').replace(
+      queryParameters: {'state': state},
+    );
+    final response = await _client.get(
+      uri,
+      headers: {'Accept': 'application/json'},
+    );
+    final body = _parseResponse(response);
+    return _parseStringList(body['data']);
+  }
+
+  Future<List<String>> fetchLocationTalukas({
+    required String state,
+    required String district,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/doctor/locations/talukas').replace(
+      queryParameters: {
+        'state': state,
+        'district': district,
+      },
+    );
+    final response = await _client.get(
+      uri,
+      headers: {'Accept': 'application/json'},
+    );
+    final body = _parseResponse(response);
+    return _parseStringList(body['data']);
+  }
+
+  Future<List<String>> fetchLocationCities({
+    required String state,
+    required String district,
+    required String taluka,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/doctor/locations/cities').replace(
+      queryParameters: {
+        'state': state,
+        'district': district,
+        'taluka': taluka,
+      },
+    );
+    final response = await _client.get(
+      uri,
+      headers: {'Accept': 'application/json'},
+    );
+    final body = _parseResponse(response);
+    return _parseStringList(body['data']);
+  }
+
   Future<Map<String, dynamic>> proposeAppointment({
     required int appointmentId,
     required DateTime scheduledAt,
@@ -205,12 +296,19 @@ class ApiService {
   Future<Map<String, dynamic>> completeAppointment({
     required int appointmentId,
     String? notes,
+    double? charges,
+    double? fees,
+    double? onSiteMedicineCharges,
   }) async {
     final response = await _client.post(
       Uri.parse('${ApiConstants.baseUrl}/doctor/appointments/$appointmentId/complete'),
       headers: {'Accept': 'application/json'},
       body: {
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        if (charges != null) 'charges': charges.toStringAsFixed(2),
+        if (fees != null) 'fees': fees.toStringAsFixed(2),
+        if (onSiteMedicineCharges != null)
+          'on_site_medicine_charges': onSiteMedicineCharges.toStringAsFixed(2),
       },
     );
     return _parseResponse(response);
@@ -221,6 +319,7 @@ class ApiService {
     required String action,
     DateTime? scheduledAt,
     double? charges,
+    bool sendOtp = false,
   }) async {
     debugPrint(
       '[OTP][API] POST doctor-decision appointment=$appointmentId action=$action '
@@ -233,6 +332,7 @@ class ApiService {
         'action': action,
         if (scheduledAt != null) 'scheduled_at': scheduledAt.toIso8601String(),
         if (charges != null) 'charges': charges.toStringAsFixed(2),
+        if (sendOtp) 'send_otp': '1',
       },
     );
     debugPrint('[OTP][API] doctor-decision status=${response.statusCode} body=${response.body}');
@@ -309,6 +409,14 @@ class ApiService {
       return body;
     }
     throw Exception(body['message'] ?? 'Request failed');
+  }
+
+  List<String> _parseStringList(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .map((item) => item?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty)
+        .toList();
   }
 }
 
