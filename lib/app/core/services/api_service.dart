@@ -371,8 +371,6 @@ class ApiService {
   Future<Map<String, dynamic>> saveTreatment({
     required int appointmentId,
     required String treatmentDetails,
-    bool? followupRequired,
-    DateTime? nextFollowupDate,
     String? notes,
   }) async {
     final response = await _client.post(
@@ -380,8 +378,6 @@ class ApiService {
       headers: {'Accept': 'application/json'},
       body: {
         'treatment_details': treatmentDetails.trim(),
-        if (followupRequired != null) 'followup_required': followupRequired ? '1' : '0',
-        if (nextFollowupDate != null) 'next_followup_date': nextFollowupDate.toIso8601String(),
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       },
     );
@@ -403,6 +399,38 @@ class ApiService {
     );
     return _parseResponse(response);
   }
+
+  Future<List<FarmerAnimalOption>> fetchContinuationAnimals({
+    required int appointmentId,
+  }) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/appointments/$appointmentId/continuation-animals'),
+      headers: {'Accept': 'application/json'},
+    );
+    final body = _parseResponse(response);
+    final raw = body['data'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => FarmerAnimalOption.fromJson(Map<String, dynamic>.from(item)))
+        .where((item) => item.id > 0)
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> continueAppointmentWithAnimal({
+    required int appointmentId,
+    required int animalId,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/appointments/$appointmentId/continue'),
+      headers: {'Accept': 'application/json'},
+      body: {
+        'animal_id': animalId.toString(),
+      },
+    );
+    return _parseResponse(response);
+  }
+
   Map<String, dynamic> _parseResponse(http.Response response) {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -417,6 +445,31 @@ class ApiService {
         .map((item) => item?.toString().trim() ?? '')
         .where((item) => item.isNotEmpty)
         .toList();
+  }
+}
+
+class FarmerAnimalOption {
+  const FarmerAnimalOption({
+    required this.id,
+    required this.name,
+    required this.tagNumber,
+    required this.imageUrl,
+  });
+
+  final int id;
+  final String name;
+  final String tagNumber;
+  final String imageUrl;
+
+  factory FarmerAnimalOption.fromJson(Map<String, dynamic> json) {
+    return FarmerAnimalOption(
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      name: json['animal_name']?.toString().trim().isNotEmpty == true
+          ? json['animal_name'].toString()
+          : 'Animal',
+      tagNumber: json['tag_number']?.toString() ?? '',
+      imageUrl: json['image_url']?.toString() ?? '',
+    );
   }
 }
 

@@ -219,116 +219,268 @@ class AppointmentsTab extends StatelessWidget {
           ? appointment.onSiteMedicineCharges!.toStringAsFixed(0)
           : '',
     );
-    try {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useRootNavigator: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        builder: (sheetContext) {
-          return StatefulBuilder(
-            builder: (context, setState) {
-              final parsedFees = double.tryParse(feesController.text.trim());
-              final parsedOnSiteMedicineCharges =
-                  double.tryParse(onSiteMedicineChargesController.text.trim()) ?? 0;
-              final canSubmit = parsedFees != null && parsedFees > 0;
-              return Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  16,
-                  16,
-                  MediaQuery.of(sheetContext).viewInsets.bottom + 16,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Complete Appointment',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final parsedFees = double.tryParse(feesController.text.trim());
+            final parsedOnSiteMedicineCharges =
+                double.tryParse(onSiteMedicineChargesController.text.trim()) ?? 0;
+            final canSubmit = parsedFees != null && parsedFees > 0;
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Complete Appointment',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Enter final charges to complete this appointment.',
+                    style: TextStyle(fontSize: 12.5, color: AppColors.grey),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: feesController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setState(() {}),
+                    style: const TextStyle(fontSize: 12.2),
+                    decoration: const InputDecoration(
+                      labelText: 'Fees',
+                      prefixText: 'Rs ',
+                      hintText: 'Enter visit fees',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      labelStyle: TextStyle(fontSize: 12),
+                      hintStyle: TextStyle(fontSize: 11.5),
+                      floatingLabelStyle: TextStyle(fontSize: 12),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Enter final charges to complete this appointment.',
-                      style: TextStyle(fontSize: 12.5, color: AppColors.grey),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: onSiteMedicineChargesController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setState(() {}),
+                    style: const TextStyle(fontSize: 12.2),
+                    decoration: const InputDecoration(
+                      labelText: 'On Site Medicine Charges',
+                      prefixText: 'Rs ',
+                      hintText: 'Enter on site medicine charges',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      labelStyle: TextStyle(fontSize: 12),
+                      hintStyle: TextStyle(fontSize: 11.5),
+                      floatingLabelStyle: TextStyle(fontSize: 12),
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: feesController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      onChanged: (_) => setState(() {}),
-                      style: const TextStyle(fontSize: 12.2),
-                      decoration: const InputDecoration(
-                        labelText: 'Fees',
-                        prefixText: 'Rs ',
-                        hintText: 'Enter visit fees',
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        labelStyle: TextStyle(fontSize: 12),
-                        hintStyle: TextStyle(fontSize: 11.5),
-                        floatingLabelStyle: TextStyle(fontSize: 12),
-                      ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Total: Rs ${(canSubmit ? (parsedFees + parsedOnSiteMedicineCharges) : 0).toStringAsFixed(0)}',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: onSiteMedicineChargesController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      onChanged: (_) => setState(() {}),
-                      style: const TextStyle(fontSize: 12.2),
-                      decoration: const InputDecoration(
-                        labelText: 'On Site Medicine Charges',
-                        prefixText: 'Rs ',
-                        hintText: 'Enter on site medicine charges',
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        labelStyle: TextStyle(fontSize: 12),
-                        hintStyle: TextStyle(fontSize: 11.5),
-                        floatingLabelStyle: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Total: Rs ${(canSubmit ? (parsedFees + parsedOnSiteMedicineCharges) : 0).toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: canSubmit
-                            ? () async {
-                                Navigator.of(sheetContext).pop();
-                                await controller.markAppointmentCompleted(
-                                  appointment,
-                                  fees: parsedFees,
-                                  onSiteMedicineCharges: parsedOnSiteMedicineCharges,
-                                );
-                              }
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: AppColors.white,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: canSubmit
+                              ? () async {
+                                  Navigator.of(sheetContext).pop();
+                                  await controller.markAppointmentCompleted(
+                                    appointment,
+                                    fees: parsedFees,
+                                    onSiteMedicineCharges: parsedOnSiteMedicineCharges,
+                                  );
+                                }
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: AppColors.white,
+                          ),
+                          child: const Text('Submit'),
                         ),
-                        child: const Text('Submit'),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      );
-    } finally {
-      feesController.dispose();
-      onSiteMedicineChargesController.dispose();
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: canSubmit
+                              ? () async {
+                                  Navigator.of(sheetContext).pop();
+                                  final completed = await controller.markAppointmentCompleted(
+                                    appointment,
+                                    fees: parsedFees,
+                                    onSiteMedicineCharges: parsedOnSiteMedicineCharges,
+                                  );
+                                  if (!completed) return;
+                                  await _openContinueAnimalsSheet(appointment);
+                                }
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1B5E20),
+                            foregroundColor: AppColors.white,
+                          ),
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Save & Continue',
+                              maxLines: 1,
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    // Let bottom-sheet close animation complete before disposing controllers.
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    feesController.dispose();
+    onSiteMedicineChargesController.dispose();
+  }
+
+  Future<void> _openContinueAnimalsSheet(DoctorAppointment appointment) async {
+    final animals = await controller.fetchContinuationAnimals(appointmentId: appointment.id);
+    if (animals.isEmpty) {
+      Get.snackbar('No Animals', 'No animals available for this farmer.');
+      return;
     }
+
+    final hostContext = Get.context;
+    if (hostContext == null) return;
+    if (!hostContext.mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: hostContext,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(sheetContext).viewInsets.bottom + 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Select Animal For Next Treatment',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(sheetContext).size.height * 0.55),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: animals.length,
+                    itemBuilder: (context, index) {
+                      final animal = animals[index];
+                      final image = animal.imageUrl.trim();
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF4FAF4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE4EFE4)),
+                        ),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: image.startsWith('http://') || image.startsWith('https://')
+                                  ? Image.network(
+                                      image,
+                                      height: 50,
+                                      width: 50,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => Container(
+                                        height: 50,
+                                        width: 50,
+                                        color: const Color(0xFFE4EFE4),
+                                        child: const Icon(Icons.pets_rounded, color: AppColors.grey),
+                                      ),
+                                    )
+                                  : Container(
+                                      height: 50,
+                                      width: 50,
+                                      color: const Color(0xFFE4EFE4),
+                                      child: const Icon(Icons.pets_rounded, color: AppColors.grey),
+                                    ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    animal.name,
+                                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    animal.tagNumber.trim().isEmpty ? 'Tag: -' : 'Tag: ${animal.tagNumber}',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.grey),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ElevatedButton(
+                              onPressed: () async {
+                                Navigator.of(sheetContext).pop();
+                                final created = await controller.continueAppointmentWithAnimal(
+                                  appointmentId: appointment.id,
+                                  animalId: animal.id,
+                                );
+                                if (created != null) {
+                                  await controller.refreshAppointments();
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: AppColors.white,
+                                minimumSize: const Size(88, 32),
+                              ),
+                              child: const Text('Continue'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _openTreatmentSheet(BuildContext context, DoctorAppointment appointment) async {
@@ -352,8 +504,6 @@ class AppointmentsTab extends StatelessWidget {
             )
             .toList();
     final pendingDispose = <_MedicineInput>[];
-    bool followupRequired = appointment.followupRequired;
-    DateTime? nextFollowupDate = appointment.nextFollowupDate?.toLocal();
 
     await showModalBottomSheet<void>(
       context: context,
@@ -610,42 +760,6 @@ class AppointmentsTab extends StatelessWidget {
                       labelText: 'Notes (Optional)',
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: followupRequired,
-                    title: const Text('Follow-up required'),
-                    onChanged: (value) => setState(() {
-                      followupRequired = value;
-                      if (!followupRequired) {
-                        nextFollowupDate = null;
-                      }
-                    }),
-                  ),
-                  if (followupRequired)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.event_available_rounded),
-                      title: Text(
-                        nextFollowupDate == null
-                            ? 'Select next follow-up date'
-                            : DateFormat('dd MMM yyyy').format(nextFollowupDate!),
-                      ),
-                      onTap: () async {
-                        final now = DateTime.now();
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: nextFollowupDate ?? now.add(const Duration(days: 1)),
-                          firstDate: DateTime(now.year, now.month, now.day),
-                          lastDate: now.add(const Duration(days: 365)),
-                        );
-                        if (picked != null) {
-                          setState(() {
-                            nextFollowupDate = DateTime(picked.year, picked.month, picked.day);
-                          });
-                        }
-                      },
-                    ),
                   const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,
@@ -672,11 +786,6 @@ class AppointmentsTab extends StatelessWidget {
                           Get.snackbar('Required', 'Please add at least one medicine.');
                           return;
                         }
-                        if (followupRequired && nextFollowupDate == null) {
-                          Get.snackbar('Required', 'Please select next follow-up date.');
-                          return;
-                        }
-
                         final onsiteEntries = onsiteTreatments
                             .map((item) => item.text.trim())
                             .where((item) => item.isNotEmpty)
@@ -694,8 +803,6 @@ class AppointmentsTab extends StatelessWidget {
                         await controller.saveAppointmentTreatment(
                           appointment: appointment,
                           treatmentDetails: treatment,
-                          followupRequired: followupRequired,
-                          nextFollowupDate: nextFollowupDate,
                           notes: notesController.text.trim(),
                         );
                       },
@@ -1045,14 +1152,16 @@ class AppointmentsTab extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: const Color(0xFF7CB342).withValues(alpha: 0.6)),
                     ),
-                    child: Text(
-                      'Distance: $distanceLabel',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11.8,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF2E7D32),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Distance: $distanceLabel',
+                        style: const TextStyle(
+                          fontSize: 11.8,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF2E7D32),
+                        ),
                       ),
                     ),
                   ),
@@ -1345,20 +1454,23 @@ class _AppointmentCard extends StatelessWidget {
                       ],
                       const SizedBox(height: 4),
                       Container(
+                        width: double.infinity,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFFE8F5E9),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: const Color(0xFF7CB342).withValues(alpha: 0.6)),
                         ),
-                        child: Text(
-                          'Distance: $distanceLabel',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11.8,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF2E7D32),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Distance: $distanceLabel',
+                            style: const TextStyle(
+                              fontSize: 11.8,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2E7D32),
+                            ),
                           ),
                         ),
                       ),

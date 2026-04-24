@@ -3,10 +3,8 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -16,6 +14,7 @@ import '../../core/models/doctor_profile.dart';
 import '../../core/models/doctor_settings.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/firebase_messaging_service.dart';
+import '../../core/services/notification_alert_service.dart';
 import '../../core/services/session_service.dart';
 import '../../routes/app_pages.dart';
 
@@ -36,7 +35,6 @@ class HomeController extends GetxController {
   final appSettings = Rxn<DoctorSettings>();
   final ApiService _apiService = ApiService();
   final FirebaseMessagingService _firebaseMessagingService = FirebaseMessagingService();
-  final Map<String, _GeoPoint> _farmerAddressCache = {};
 
   Timer? _profileSyncTimer;
   StreamSubscription<Position>? _doctorLocationSubscription;
@@ -59,14 +57,16 @@ class HomeController extends GetxController {
   void onClose() {
     _profileSyncTimer?.cancel();
     _doctorLocationSubscription?.cancel();
+    NotificationAlertService.stop();
     super.onClose();
   }
 
   void _startRealtimeDoctorSync() {
     _profileSyncTimer?.cancel();
-    _profileSyncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
-      refreshProfile();
-      refreshSettings();
+    _profileSyncTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
+      await refreshProfile();
+      await refreshSettings();
+      await refreshAppointments(silent: true, refreshLocationAfter: false);
     });
   }
 
@@ -126,12 +126,17 @@ class HomeController extends GetxController {
     }
   }
 
-  Future<void> refreshAppointments() async {
+  Future<void> refreshAppointments({
+    bool silent = false,
+    bool refreshLocationAfter = true,
+  }) async {
     final currentProfile = profile.value;
     if (currentProfile == null) return;
 
     try {
-      appointmentLoading.value = true;
+      if (!silent) {
+        appointmentLoading.value = true;
+      }
       final list = await _apiService.fetchDoctorAppointments(doctorId: currentProfile.id);
       appointments.assignAll(list);
       await _refreshAppointmentDistanceLabels();
@@ -145,8 +150,10 @@ class HomeController extends GetxController {
     } catch (_) {
       // Keep last real API state; never inject demo data.
     } finally {
-      appointmentLoading.value = false;
-      if (profile.value?.isActiveForAppointments == true) {
+      if (!silent) {
+        appointmentLoading.value = false;
+      }
+      if (refreshLocationAfter && profile.value?.isActiveForAppointments == true) {
         _refreshCurrentLocation();
       }
     }
@@ -189,80 +196,34 @@ class HomeController extends GetxController {
 
     final next = <int, String>{};
     for (final appointment in appointments) {
-      next[appointment.id] = await _distanceFromAddress(
+      next[appointment.id] = _distanceFromFarmerCoordinates(
         doctorLat: doctorLat,
         doctorLng: doctorLng,
-        farmerAddress: appointment.address,
+        farmerLat: appointment.latitude,
+        farmerLng: appointment.longitude,
       );
     }
     appointmentDistanceLabels.assignAll(next);
   }
 
-  Future<String> _distanceFromAddress({
+  String _distanceFromFarmerCoordinates({
     required double doctorLat,
     required double doctorLng,
-    required String farmerAddress,
-  }) async {
-    final address = farmerAddress.trim();
-    if (address.isEmpty) return '--';
+    required double? farmerLat,
+    required double? farmerLng,
+  }) {
+    if (farmerLat == null || farmerLng == null) return '--';
 
     try {
-      _GeoPoint? point = _farmerAddressCache[address];
-      if (point == null) {
-        point = await _geocodeAddress(address);
-        if (point == null) return '--';
-        _farmerAddressCache[address] = point;
-      }
-
       final meters = Geolocator.distanceBetween(
         doctorLat,
         doctorLng,
-        point.latitude,
-        point.longitude,
+        farmerLat,
+        farmerLng,
       );
       return _formatDistance(meters);
     } catch (_) {
       return '--';
-    }
-  }
-
-  Future<_GeoPoint?> _geocodeAddress(String address) async {
-    try {
-      final locations = await locationFromAddress(address);
-      if (locations.isNotEmpty) {
-        final first = locations.first;
-        return _GeoPoint(first.latitude, first.longitude);
-      }
-    } catch (_) {}
-
-    try {
-      final uri = Uri.https(
-        'nominatim.openstreetmap.org',
-        '/search',
-        {
-          'q': address,
-          'format': 'jsonv2',
-          'limit': '1',
-        },
-      );
-      final response = await http.get(
-        uri,
-        headers: const {
-          'Accept': 'application/json',
-          'User-Agent': 'CorzinDoctor/1.0',
-        },
-      );
-      if (response.statusCode != 200 || response.body.isEmpty) return null;
-      final data = jsonDecode(response.body);
-      if (data is! List || data.isEmpty) return null;
-      final row = data.first;
-      if (row is! Map) return null;
-      final lat = double.tryParse(row['lat']?.toString() ?? '');
-      final lng = double.tryParse(row['lon']?.toString() ?? '');
-      if (lat == null || lng == null) return null;
-      return _GeoPoint(lat, lng);
-    } catch (_) {
-      return null;
     }
   }
 
@@ -314,8 +275,12 @@ class HomeController extends GetxController {
         await _apiService.updateFcmToken(doctorId: profileValue.id, token: token);
       });
 
-      _firebaseMessagingService.foregroundMessageStream().listen(_handleRemoteMessage);
-      _firebaseMessagingService.messageOpenedAppStream().listen(_handleRemoteMessage);
+      _firebaseMessagingService.foregroundMessageStream().listen(
+        (message) => _handleRemoteMessage(message, triggerAppointmentAlert: true),
+      );
+      _firebaseMessagingService.messageOpenedAppStream().listen(
+        (message) => _handleRemoteMessage(message),
+      );
 
       final initialMessage = await _firebaseMessagingService.getInitialMessage();
       if (initialMessage != null) {
@@ -324,7 +289,10 @@ class HomeController extends GetxController {
     } catch (_) {}
   }
 
-  void _handleRemoteMessage(RemoteMessage message) {
+  void _handleRemoteMessage(
+    RemoteMessage message, {
+    bool triggerAppointmentAlert = false,
+  }) {
     final title = _resolveNotificationTitle(message);
     final body = _resolveNotificationBody(message);
 
@@ -347,6 +315,15 @@ class HomeController extends GetxController {
       snackPosition: SnackPosition.TOP,
       duration: const Duration(seconds: 4),
     );
+
+    if (triggerAppointmentAlert &&
+        NotificationAlertService.isNewAppointmentRequest(
+          title: finalTitle,
+          body: finalBody,
+          data: message.data,
+        )) {
+      unawaited(NotificationAlertService.playFor20Seconds());
+    }
 
     refreshProfile();
     refreshAppointments();
@@ -502,7 +479,7 @@ class HomeController extends GetxController {
     }
   }
 
-  Future<void> markAppointmentCompleted(
+  Future<bool> markAppointmentCompleted(
     DoctorAppointment appointment, {
     double? fees,
     double? onSiteMedicineCharges,
@@ -526,6 +503,7 @@ class HomeController extends GetxController {
         ),
       );
       Get.snackbar('Visit Completed', 'Appointment marked as completed.');
+      return true;
     } catch (_) {
       _upsertAppointment(
         appointment.copyWith(
@@ -536,6 +514,43 @@ class HomeController extends GetxController {
         ),
       );
       Get.snackbar('Saved In App', 'Marked as completed in app preview.');
+      return false;
+    }
+  }
+
+  Future<List<FarmerAnimalOption>> fetchContinuationAnimals({
+    required int appointmentId,
+  }) async {
+    try {
+      return await _apiService.fetchContinuationAnimals(appointmentId: appointmentId);
+    } catch (e) {
+      Get.snackbar('Load Failed', e.toString());
+      return const [];
+    }
+  }
+
+  Future<DoctorAppointment?> continueAppointmentWithAnimal({
+    required int appointmentId,
+    required int animalId,
+  }) async {
+    try {
+      final response = await _apiService.continueAppointmentWithAnimal(
+        appointmentId: appointmentId,
+        animalId: animalId,
+      );
+      final map = response['data'];
+      if (map is Map<String, dynamic>) {
+        final appointment = DoctorAppointment.fromJson(map);
+        _upsertAppointment(appointment);
+        Get.snackbar('Ready', response['message']?.toString() ?? 'Next animal appointment created.');
+        return appointment;
+      }
+      Get.snackbar('Ready', response['message']?.toString() ?? 'Next animal appointment created.');
+      await refreshAppointments();
+      return null;
+    } catch (e) {
+      Get.snackbar('Continue Failed', e.toString());
+      return null;
     }
   }
 
@@ -644,16 +659,12 @@ class HomeController extends GetxController {
   Future<void> saveAppointmentTreatment({
     required DoctorAppointment appointment,
     required String treatmentDetails,
-    bool followupRequired = false,
-    DateTime? nextFollowupDate,
     String? notes,
   }) async {
     try {
       final response = await _apiService.saveTreatment(
         appointmentId: appointment.id,
         treatmentDetails: treatmentDetails,
-        followupRequired: followupRequired,
-        nextFollowupDate: nextFollowupDate,
         notes: notes,
       );
 
@@ -664,8 +675,6 @@ class HomeController extends GetxController {
         _upsertAppointment(
           appointment.copyWith(
             treatmentDetails: treatmentDetails,
-            followupRequired: followupRequired,
-            nextFollowupDate: nextFollowupDate,
             notes: notes ?? appointment.notes,
           ),
         );
