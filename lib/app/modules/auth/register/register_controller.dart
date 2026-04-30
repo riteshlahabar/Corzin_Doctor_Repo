@@ -7,11 +7,20 @@ import '../../../core/services/api_service.dart';
 import '../../../routes/app_pages.dart';
 
 class RegisterController extends GetxController {
+  static const List<String> requiredFileKeys = <String>[
+    'adhar_document_front',
+    'adhar_document_back',
+    'pan_document',
+    'mmc_document',
+    'doctor_photo',
+  ];
+
   final formKey = GlobalKey<FormState>();
   final isSubmitting = false.obs;
   final agreeTerms = false.obs;
   final termsText = 'Terms content is managed from backend and accepted during registration.'.obs;
   final isLocationLoading = false.obs;
+  final documentValidationTriggered = false.obs;
 
   final firstNameController = TextEditingController();
   final lastNameController = TextEditingController();
@@ -152,7 +161,7 @@ class RegisterController extends GetxController {
     cityController.text = selectedTaluka;
   }
 
-  Future<void> pickFile(String key, {bool imageOnly = false}) async {
+  Future<bool> pickFile(String key, {bool imageOnly = false}) async {
     final result = await FilePicker.platform.pickFiles(
       type: imageOnly ? FileType.image : FileType.custom,
       allowedExtensions: imageOnly ? null : ['pdf', 'jpg', 'jpeg', 'png'],
@@ -161,7 +170,15 @@ class RegisterController extends GetxController {
     if (result != null && result.files.isNotEmpty) {
       files[key] = result.files.single;
       files.refresh();
+      return true;
     }
+    return false;
+  }
+
+  bool isRequiredDocumentMissing(String key) {
+    if (!requiredFileKeys.contains(key)) return false;
+    if (!documentValidationTriggered.value) return false;
+    return files[key] == null;
   }
 
   String? requiredValidator(String? value, String label) {
@@ -169,16 +186,58 @@ class RegisterController extends GetxController {
     return null;
   }
 
+  String? adharNumberValidator(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Aadhar Number is required';
+    }
+    final digitsOnly = value.trim();
+    if (!RegExp(r'^\d{12}$').hasMatch(digitsOnly)) {
+      return 'Aadhar Number must be exactly 12 digits';
+    }
+    return null;
+  }
+
+  String? contactNumberValidator(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Contact Number is required';
+    }
+    final contact = value.trim();
+    if (!RegExp(r'^\d{10}$').hasMatch(contact)) {
+      return 'Contact Number must be exactly 10 digits';
+    }
+    return null;
+  }
+
+  String? panNumberValidator(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'PAN Number is required';
+    }
+    final pan = value.trim().toUpperCase();
+    if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$').hasMatch(pan)) {
+      return 'Enter valid PAN (example: ABCDE1234F)';
+    }
+    return null;
+  }
+
   Future<void> registerDoctor() async {
+    documentValidationTriggered.value = true;
+
     if (!formKey.currentState!.validate()) return;
     if (!agreeTerms.value) {
       Get.snackbar('Terms required', 'Please accept terms and conditions');
       return;
     }
 
-    final hasMissingFile = files.values.any((file) => file == null);
+    final missingFiles = <String>[
+      if (files['adhar_document_front'] == null) 'Aadhar Front',
+      if (files['adhar_document_back'] == null) 'Aadhar Back',
+      if (files['pan_document'] == null) 'PAN Attachment',
+      if (files['mmc_document'] == null) 'MMC Attachment',
+      if (files['doctor_photo'] == null) 'Doctor Photo',
+    ];
+    final hasMissingFile = missingFiles.isNotEmpty;
     if (hasMissingFile) {
-      Get.snackbar('Documents required', 'Please upload all required documents');
+      Get.snackbar('Documents required', 'Please upload: ${missingFiles.join(', ')}');
       return;
     }
 
@@ -189,6 +248,14 @@ class RegisterController extends GetxController {
 
     try {
       isSubmitting.value = true;
+      final uploadFiles = <String, PlatformFile>{};
+      for (final entry in files.entries) {
+        final file = entry.value;
+        if (file != null) {
+          uploadFiles[entry.key] = file;
+        }
+      }
+
       final response = await _apiService.register(
         fields: {
           'first_name': firstNameController.text.trim(),
@@ -212,7 +279,7 @@ class RegisterController extends GetxController {
           'password_confirmation': repeatPasswordController.text.trim(),
           'terms_accepted': '1',
         },
-        files: files.map((key, value) => MapEntry(key, value!)),
+        files: uploadFiles,
       );
       Get.snackbar('Registration successful', response['message']?.toString() ?? 'Doctor registration submitted');
       Get.offAllNamed(AppRoutes.login);

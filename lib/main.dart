@@ -34,11 +34,12 @@ Future<void> _doctorFirebaseBackgroundHandler(RemoteMessage message) async {
     type: message.data['type']?.toString() ?? '',
   );
 
-  if (NotificationAlertService.isNewAppointmentRequest(
+  final shouldPlayAlert = await NotificationAlertService.shouldPlayForMessage(
     title: title,
     body: body,
     data: message.data,
-  )) {
+  );
+  if (shouldPlayAlert) {
     await NotificationAlertService.playFor20Seconds();
   }
 }

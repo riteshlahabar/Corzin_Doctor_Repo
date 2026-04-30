@@ -83,6 +83,9 @@ class AppointmentsTab extends StatelessWidget {
                   otpAlreadySent: controller.otpRequestedAppointmentIds.contains(item.id),
                   onApprove: () => controller.approveAppointment(item),
                   onDecline: () => controller.declineAppointment(item),
+                  onCall: () {
+                    controller.callFarmer(item);
+                  },
                   onMap: () => controller.openNavigation(item),
                   onVerifyOtp: () => _openOtpSheet(
                     context,
@@ -998,11 +1001,11 @@ class AppointmentsTab extends StatelessWidget {
                           ],
                           if (appointment.recentMilkHistory.isNotEmpty) ...[
                             const Text(
-                              'Milk / Fat / SNF (Last 5 Days)',
+                              'Milk / Fat / SNF (Last 10 Days)',
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
                             ),
                             const SizedBox(height: 6),
-                            ...appointment.recentMilkHistory.take(5).map((row) {
+                            ...appointment.recentMilkHistory.take(10).map((row) {
                               final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
                               final milk = row.totalMilk?.toStringAsFixed(1) ?? '-';
                               final fat = row.fat?.toStringAsFixed(1) ?? '-';
@@ -1023,11 +1026,11 @@ class AppointmentsTab extends StatelessWidget {
                           ],
                           if (appointment.recentFeedingHistory.isNotEmpty) ...[
                             const Text(
-                              'Feeding Data (Last 5 Days)',
+                              'Feeding Data (Last 10 Days)',
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
                             ),
                             const SizedBox(height: 6),
-                            ...appointment.recentFeedingHistory.take(8).map((row) {
+                            ...appointment.recentFeedingHistory.take(20).map((row) {
                               final date = row.date != null ? DateFormat('dd MMM').format(row.date!.toLocal()) : 'Date';
                               final feed = row.feedType.trim().isEmpty ? 'Feed' : row.feedType;
                               final quantity = row.quantity != null ? row.quantity!.toStringAsFixed(1) : '-';
@@ -1226,6 +1229,7 @@ class _AppointmentCard extends StatelessWidget {
     required this.otpAlreadySent,
     required this.onApprove,
     required this.onDecline,
+    required this.onCall,
     required this.onMap,
     required this.onVerifyOtp,
     required this.onStartTreatment,
@@ -1240,6 +1244,7 @@ class _AppointmentCard extends StatelessWidget {
   final bool otpAlreadySent;
   final VoidCallback onApprove;
   final VoidCallback onDecline;
+  final VoidCallback onCall;
   final VoidCallback onMap;
   final VoidCallback onVerifyOtp;
   final VoidCallback onStartTreatment;
@@ -1259,6 +1264,11 @@ class _AppointmentCard extends StatelessWidget {
     final hasTreatmentDetails = appointment.treatmentDetails.trim().isNotEmpty;
     final isInProgress = appointment.normalizedStatus == 'in_progress';
     final otpVerified = appointment.otpVerifiedAt != null;
+    final showCornerDialer =
+        appointment.needsOtpVerification &&
+        !otpVerified &&
+        !isInProgress &&
+        appointment.farmerPhone.trim().isNotEmpty;
     final hasHistoryData = appointment.previousHistories.isNotEmpty ||
         appointment.recentMilkHistory.isNotEmpty ||
         appointment.recentFeedingHistory.isNotEmpty ||
@@ -1532,7 +1542,19 @@ class _AppointmentCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildActionGrid(actionButtons),
+                if (showCornerDialer)
+                  _buildActionRowWithCornerDialer(
+                    actions: actionButtons,
+                    dialerButton: _iconActionButton(
+                      icon: Icons.phone,
+                      background: const Color(0xFFEAF5EA),
+                      foreground: AppColors.primary,
+                      onPressed: onCall,
+                      width: 34,
+                    ),
+                  )
+                else
+                  _buildActionGrid(actionButtons, columns: 3),
                 if (fullWidthCompleteButton != null) ...[
                   const SizedBox(height: 8),
                   fullWidthCompleteButton,
@@ -1544,18 +1566,18 @@ class _AppointmentCard extends StatelessWidget {
     );
   }
 
-  Widget _buildActionGrid(List<Widget> actions) {
+  Widget _buildActionGrid(List<Widget> actions, {int columns = 3}) {
     if (actions.isEmpty) return const SizedBox.shrink();
-    const columns = 3;
+    final safeColumns = columns < 1 ? 1 : columns;
     final rows = <Widget>[];
 
-    for (var start = 0; start < actions.length; start += columns) {
-      final end = (start + columns) > actions.length ? actions.length : (start + columns);
+    for (var start = 0; start < actions.length; start += safeColumns) {
+      final end = (start + safeColumns) > actions.length ? actions.length : (start + safeColumns);
       final slice = actions.sublist(start, end);
 
       rows.add(
         Row(
-          children: List.generate(columns * 2 - 1, (index) {
+          children: List.generate(safeColumns * 2 - 1, (index) {
             if (index.isOdd) return const SizedBox(width: 8);
             final columnIndex = index ~/ 2;
             if (columnIndex < slice.length) {
@@ -1574,6 +1596,27 @@ class _AppointmentCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: rows,
+    );
+  }
+
+  Widget _buildActionRowWithCornerDialer({
+    required List<Widget> actions,
+    required Widget dialerButton,
+  }) {
+    final primaryActions = actions.take(3).toList();
+    if (primaryActions.isEmpty) {
+      return Align(alignment: Alignment.centerRight, child: dialerButton);
+    }
+
+    return Row(
+      children: [
+        for (var index = 0; index < primaryActions.length; index++) ...[
+          Expanded(child: primaryActions[index]),
+          if (index != primaryActions.length - 1) const SizedBox(width: 8),
+        ],
+        const SizedBox(width: 8),
+        dialerButton,
+      ],
     );
   }
 
@@ -1636,6 +1679,30 @@ class _AppointmentCard extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: text),
+      ),
+    );
+  }
+
+  Widget _iconActionButton({
+    required IconData icon,
+    required Color background,
+    required Color foreground,
+    required VoidCallback onPressed,
+    double width = 40,
+  }) {
+    return SizedBox(
+      width: width,
+      height: 28,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          backgroundColor: background,
+          foregroundColor: foreground,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+        ),
+        child: Icon(icon, size: 15),
       ),
     );
   }

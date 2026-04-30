@@ -22,8 +22,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "startUniqueTone" -> {
-                        startUniqueTone()
-                        result.success(true)
+                        result.success(startUniqueTone())
                     }
                     "stopUniqueTone" -> {
                         stopUniqueTone()
@@ -34,14 +33,14 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    private fun startUniqueTone() {
-        if (toneRunning) return
+    private fun startUniqueTone(): Boolean {
+        if (toneRunning) return true
         toneRunning = true
         try {
             toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100)
         } catch (_: Throwable) {
             toneRunning = false
-            return
+            return false
         }
 
         toneRunnable = object : Runnable {
@@ -52,6 +51,7 @@ class MainActivity : FlutterActivity() {
             }
         }
         toneRunnable?.let { mainHandler.post(it) }
+        return true
     }
 
     private fun playUniquePattern() {

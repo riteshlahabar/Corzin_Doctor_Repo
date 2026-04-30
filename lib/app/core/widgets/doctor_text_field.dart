@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class DoctorTextField extends StatelessWidget {
   const DoctorTextField({
@@ -14,6 +15,8 @@ class DoctorTextField extends StatelessWidget {
     this.suffixIcon,
     this.obscureText = false,
     this.singleLineVerticalPadding,
+    this.maxLength,
+    this.inputFormatters,
   });
 
   final TextEditingController controller;
@@ -27,6 +30,8 @@ class DoctorTextField extends StatelessWidget {
   final Widget? suffixIcon;
   final bool obscureText;
   final double? singleLineVerticalPadding;
+  final int? maxLength;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +47,17 @@ class DoctorTextField extends StatelessWidget {
           controller: controller,
           keyboardType: keyboardType,
           validator: validator,
+          maxLength: maxLength,
+          inputFormatters: inputFormatters,
+          buildCounter: maxLength == null
+              ? null
+              : (
+                  BuildContext context, {
+                  required int currentLength,
+                  required bool isFocused,
+                  required int? maxLength,
+                }) =>
+                    null,
           maxLines: maxLines,
           readOnly: readOnly,
           onTap: onTap,
@@ -56,6 +72,7 @@ class DoctorTextField extends StatelessWidget {
               fontSize: 11,
               fontWeight: FontWeight.w400,
             ),
+            errorMaxLines: 3,
             suffixIcon: suffixIcon,
             suffixIconConstraints: suffixIcon == null
                 ? null

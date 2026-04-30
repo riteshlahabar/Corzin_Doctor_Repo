@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../core/widgets/bottom_navigation_bar.dart';
@@ -15,6 +16,14 @@ class HomeView extends GetView<HomeController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
+      if (!controller.appReady.value) {
+        return const Scaffold(
+          body: Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
+
       final profile = controller.profile.value;
       if (profile == null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -34,29 +43,39 @@ class HomeView extends GetView<HomeController> {
         ProfileTab(controller: controller),
       ];
 
-      return Scaffold(
-        body: IndexedStack(
-          index: controller.selectedIndex.value,
-          children: pages,
-        ),
-        bottomNavigationBar: DoctorBottomNavigationBar(
-          currentIndex: controller.selectedIndex.value,
-          onChanged: (tab) {
-            switch (tab) {
-              case BottomBarTab.home:
-                controller.selectedIndex.value = 0;
-                break;
-              case BottomBarTab.appointment:
-                controller.selectedIndex.value = 1;
-                break;
-              case BottomBarTab.visits:
-                controller.selectedIndex.value = 2;
-                break;
-              case BottomBarTab.profile:
-                controller.selectedIndex.value = 3;
-                break;
-            }
-          },
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) return;
+          final handled = controller.handlePostLoginBackPress();
+          if (!handled) {
+            SystemNavigator.pop();
+          }
+        },
+        child: Scaffold(
+          body: IndexedStack(
+            index: controller.selectedIndex.value,
+            children: pages,
+          ),
+          bottomNavigationBar: DoctorBottomNavigationBar(
+            currentIndex: controller.selectedIndex.value,
+            onChanged: (tab) {
+              switch (tab) {
+                case BottomBarTab.home:
+                  controller.selectedIndex.value = 0;
+                  break;
+                case BottomBarTab.appointment:
+                  controller.selectedIndex.value = 1;
+                  break;
+                case BottomBarTab.visits:
+                  controller.selectedIndex.value = 2;
+                  break;
+                case BottomBarTab.profile:
+                  controller.selectedIndex.value = 3;
+                  break;
+              }
+            },
+          ),
         ),
       );
     });

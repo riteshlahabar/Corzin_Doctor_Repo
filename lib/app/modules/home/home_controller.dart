@@ -18,9 +18,12 @@ import '../../core/services/notification_alert_service.dart';
 import '../../core/services/session_service.dart';
 import '../../routes/app_pages.dart';
 
-class HomeController extends GetxController {
+class HomeController extends GetxController with WidgetsBindingObserver {
   static const String _globalNotificationStoreKey = 'doctor_notification_history_global';
+  static const int _notificationHistoryLimit = 200;
+  static const Duration _selfAcceptConflictSuppressWindow = Duration(seconds: 10);
   final selectedIndex = 0.obs;
+  final appReady = false.obs;
   final profile = Rxn<DoctorProfile>(SessionService.profile);
   final loading = false.obs;
   final appointmentLoading = false.obs;
@@ -37,28 +40,98 @@ class HomeController extends GetxController {
   final FirebaseMessagingService _firebaseMessagingService = FirebaseMessagingService();
 
   Timer? _profileSyncTimer;
-  StreamSubscription<Position>? _doctorLocationSubscription;
-  _GeoPoint? _lastSyncedDoctorPoint;
+  Timer? _liveLocationTimer;
+  Worker? _tabHistoryWorker;
+  final List<int> _tabBackStack = <int>[0];
+  bool _isApplyingTabBack = false;
   int? _loadedNotificationDoctorId;
+  int? _recentLocalAcceptedAppointmentId;
+  DateTime? _recentLocalAcceptedAt;
 
   @override
   void onInit() {
     super.onInit();
+    WidgetsBinding.instance.addObserver(this);
+    _setupPostLoginTabBackHistory();
+    unawaited(_bootstrap());
+  }
+
+  Future<void> _bootstrap() async {
+    appReady.value = false;
+    await _ensureRequiredPermissionsLoop();
     _loadNotificationHistory();
-    refreshProfile();
-    refreshAppointments();
-    refreshSettings();
+    await refreshProfile();
+    await _ensureDoctorActiveByDefault();
+    await refreshAppointments(refreshLocationAfter: false);
+    await refreshSettings();
     _startRealtimeDoctorSync();
     _syncLiveTrackingForAvailability();
-    initialiseNotifications();
+    await initialiseNotifications();
+    if (!isClosed) {
+      appReady.value = true;
+    }
   }
 
   @override
   void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
     _profileSyncTimer?.cancel();
-    _doctorLocationSubscription?.cancel();
+    _liveLocationTimer?.cancel();
+    _tabHistoryWorker?.dispose();
     NotificationAlertService.stop();
     super.onClose();
+  }
+
+  void _setupPostLoginTabBackHistory() {
+    _tabBackStack
+      ..clear()
+      ..add(selectedIndex.value);
+
+    _tabHistoryWorker = ever<int>(selectedIndex, (index) {
+      if (_isApplyingTabBack) return;
+      if (index == 0) {
+        _tabBackStack
+          ..clear()
+          ..add(0);
+        return;
+      }
+      if (_tabBackStack.isNotEmpty && _tabBackStack.last == index) return;
+      _tabBackStack.add(index);
+      if (_tabBackStack.length > 32) {
+        _tabBackStack.removeAt(0);
+      }
+    });
+  }
+
+  bool handlePostLoginBackPress() {
+    if (selectedIndex.value == 0) {
+      _tabBackStack
+        ..clear()
+        ..add(0);
+      return false;
+    }
+
+    if (_tabBackStack.length <= 1) {
+      return false;
+    }
+
+    _tabBackStack.removeLast();
+    final previousTab = _tabBackStack.last;
+    _isApplyingTabBack = true;
+    selectedIndex.value = previousTab;
+    _isApplyingTabBack = false;
+    return true;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+
+    unawaited(refreshProfile());
+    unawaited(refreshAppointments(silent: true, refreshLocationAfter: false));
+    if (profile.value?.isActiveForAppointments == true) {
+      unawaited(_refreshCurrentLocation(syncBackend: true));
+    }
   }
 
   void _startRealtimeDoctorSync() {
@@ -68,6 +141,118 @@ class HomeController extends GetxController {
       await refreshSettings();
       await refreshAppointments(silent: true, refreshLocationAfter: false);
     });
+  }
+
+  Future<void> _ensureRequiredPermissionsLoop() async {
+    while (!isClosed) {
+      final ready = await _hasAllRequiredPermissions();
+      if (ready) return;
+
+      await _showRequiredPermissionsDialog();
+      await _requestRequiredPermissions();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
+  Future<void> _showRequiredPermissionsDialog() async {
+    if (Get.isDialogOpen == true) return;
+
+    await Get.dialog<void>(
+      PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('Permissions Required'),
+          content: const Text(
+            'Please allow Notification, Location, and Alert Sound permissions to continue using the app.',
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Get.back<void>(),
+              child: const Text('Allow Permissions'),
+            ),
+          ],
+        ),
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  Future<void> _requestRequiredPermissions() async {
+    try {
+      await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        announcement: false,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+      );
+
+      final locationServiceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!locationServiceEnabled) {
+        await Geolocator.openLocationSettings();
+      }
+
+      var locationPermission = await Geolocator.checkPermission();
+      if (locationPermission == LocationPermission.denied) {
+        locationPermission = await Geolocator.requestPermission();
+      }
+      if (locationPermission == LocationPermission.deniedForever) {
+        await Geolocator.openAppSettings();
+      }
+
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        await Geolocator.openAppSettings();
+      }
+    } catch (_) {}
+  }
+
+  Future<bool> _hasAllRequiredPermissions() async {
+    try {
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      final hasNotificationPermission =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+
+      final locationServiceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!locationServiceEnabled) return false;
+
+      final locationPermission = await Geolocator.checkPermission();
+      final hasLocationPermission =
+          locationPermission == LocationPermission.whileInUse ||
+          locationPermission == LocationPermission.always;
+
+      return hasNotificationPermission && hasLocationPermission;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _ensureDoctorActiveByDefault() async {
+    final current = profile.value;
+    if (current == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'doctor_default_active_applied_${current.id}';
+    final alreadyApplied = prefs.getBool(key) ?? false;
+    if (alreadyApplied) return;
+
+    if (!current.isActiveForAppointments) {
+      try {
+        final updated = await _apiService.updateDoctorAvailability(
+          doctorId: current.id,
+          isActive: true,
+        );
+        profile.value = updated;
+        await SessionService.saveProfile(updated);
+        notifications.assignAll(_buildNotifications(updated));
+        _syncLiveTrackingForAvailability();
+      } catch (_) {}
+    }
+
+    await prefs.setBool(key, true);
   }
 
   Future<void> refreshSettings() async {
@@ -179,7 +364,6 @@ class HomeController extends GetxController {
       currentDoctorLongitude.value = pos.longitude;
       await _refreshAppointmentDistanceLabels();
       if (syncBackend && profile.value?.isActiveForAppointments == true) {
-        _lastSyncedDoctorPoint = _GeoPoint(pos.latitude, pos.longitude);
         await _syncDoctorLiveLocation(pos.latitude, pos.longitude);
         await _pushLiveLocationForActiveAppointmentsFrom(
           latitude: pos.latitude,
@@ -275,24 +459,24 @@ class HomeController extends GetxController {
         await _apiService.updateFcmToken(doctorId: profileValue.id, token: token);
       });
 
-      _firebaseMessagingService.foregroundMessageStream().listen(
-        (message) => _handleRemoteMessage(message, triggerAppointmentAlert: true),
-      );
-      _firebaseMessagingService.messageOpenedAppStream().listen(
-        (message) => _handleRemoteMessage(message),
-      );
+      _firebaseMessagingService.foregroundMessageStream().listen((message) {
+        unawaited(_handleRemoteMessage(message, triggerAppointmentAlert: true));
+      });
+      _firebaseMessagingService.messageOpenedAppStream().listen((message) {
+        unawaited(_handleRemoteMessage(message));
+      });
 
       final initialMessage = await _firebaseMessagingService.getInitialMessage();
       if (initialMessage != null) {
-        _handleRemoteMessage(initialMessage);
+        await _handleRemoteMessage(initialMessage);
       }
     } catch (_) {}
   }
 
-  void _handleRemoteMessage(
+  Future<void> _handleRemoteMessage(
     RemoteMessage message, {
     bool triggerAppointmentAlert = false,
-  }) {
+  }) async {
     final title = _resolveNotificationTitle(message);
     final body = _resolveNotificationBody(message);
 
@@ -302,6 +486,21 @@ class HomeController extends GetxController {
             ? message.data['event']!.toString().trim()
             : 'Notification');
     final finalBody = body?.isNotEmpty == true ? body! : 'You have a new update.';
+    final isNewAppointmentNotification = await NotificationAlertService.shouldPlayForMessage(
+      title: finalTitle,
+      body: finalBody,
+      data: message.data,
+      currentDoctorId: profile.value?.id,
+    );
+    if (_shouldSuppressSelfConflictNotification(
+      message,
+      title: finalTitle,
+      body: finalBody,
+    )) {
+      unawaited(refreshProfile());
+      unawaited(refreshAppointments());
+      return;
+    }
 
     notifications.insert(0, '$finalTitle: $finalBody');
     _addNotificationEntry(
@@ -309,24 +508,73 @@ class HomeController extends GetxController {
       body: finalBody,
     );
 
-    Get.snackbar(
-      finalTitle,
-      finalBody,
-      snackPosition: SnackPosition.TOP,
-      duration: const Duration(seconds: 4),
-    );
+    if (isNewAppointmentNotification) {
+      Get.snackbar(
+        'Appointment Created',
+        '',
+        snackPosition: SnackPosition.TOP,
+        duration: const Duration(seconds: 4),
+      );
+    } else {
+      Get.snackbar(
+        finalTitle,
+        finalBody,
+        snackPosition: SnackPosition.TOP,
+        duration: const Duration(seconds: 4),
+      );
+    }
 
-    if (triggerAppointmentAlert &&
-        NotificationAlertService.isNewAppointmentRequest(
-          title: finalTitle,
-          body: finalBody,
-          data: message.data,
-        )) {
+    if (triggerAppointmentAlert && isNewAppointmentNotification) {
       unawaited(NotificationAlertService.playFor20Seconds());
     }
 
-    refreshProfile();
-    refreshAppointments();
+    unawaited(refreshProfile());
+    unawaited(refreshAppointments());
+  }
+
+  bool _shouldSuppressSelfConflictNotification(
+    RemoteMessage message, {
+    required String title,
+    required String body,
+  }) {
+    final subject = '$title $body'.toLowerCase();
+    final looksLikeConflictNotice =
+        subject.contains('accepted by another doctor') ||
+        (subject.contains('another doctor') && subject.contains('accepted'));
+    if (!looksLikeConflictNotice) return false;
+
+    // Hide this noisy conflict toast in doctor app; appointment state is refreshed
+    // immediately below and UI will still be consistent.
+    final recentAcceptedAt = _recentLocalAcceptedAt;
+    if (recentAcceptedAt == null || _recentLocalAcceptedAppointmentId == null) {
+      return true;
+    }
+    if (DateTime.now().difference(recentAcceptedAt) > _selfAcceptConflictSuppressWindow) {
+      return true;
+    }
+
+    final incomingAppointmentId = _extractAppointmentIdFromMessage(message);
+    if (incomingAppointmentId != null) {
+      return true;
+    }
+    return true;
+  }
+
+  int? _extractAppointmentIdFromMessage(RemoteMessage message) {
+    const keys = [
+      'appointment_id',
+      'doctor_appointment_id',
+      'parent_appointment_id',
+      'id',
+    ];
+    for (final key in keys) {
+      final value = message.data[key]?.toString().trim();
+      final parsed = int.tryParse(value ?? '');
+      if (parsed != null && parsed > 0) {
+        return parsed;
+      }
+    }
+    return null;
   }
 
   String? _resolveNotificationTitle(RemoteMessage message) {
@@ -425,6 +673,8 @@ class HomeController extends GetxController {
   }
 
   Future<void> approveAppointment(DoctorAppointment appointment) async {
+    _recentLocalAcceptedAppointmentId = appointment.id;
+    _recentLocalAcceptedAt = DateTime.now();
     try {
       await _apiService.doctorDecision(
         appointmentId: appointment.id,
@@ -434,6 +684,8 @@ class HomeController extends GetxController {
       await refreshAppointments();
       Get.snackbar('Accepted', 'Appointment accepted successfully.');
     } catch (_) {
+      _recentLocalAcceptedAppointmentId = null;
+      _recentLocalAcceptedAt = null;
       _upsertAppointment(appointment.copyWith(status: 'approved'));
       Get.snackbar('Saved In App', 'Approved locally. Backend sync pending.');
     }
@@ -707,6 +959,26 @@ class HomeController extends GetxController {
       );
     } catch (_) {}
   }
+
+  Future<void> callFarmer(DoctorAppointment appointment) async {
+    final phone = appointment.farmerPhone.trim();
+    if (phone.isEmpty) {
+      Get.snackbar('Contact Missing', 'Farmer contact number is not available.');
+      return;
+    }
+
+    final digits = phone.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (digits.isEmpty) {
+      Get.snackbar('Contact Missing', 'Farmer contact number is not valid.');
+      return;
+    }
+
+    final launched = await _tryLaunchUri(Uri.parse('tel:$digits'));
+    if (!launched && !isClosed) {
+      Get.snackbar('Call Failed', 'Unable to open phone dialer.');
+    }
+  }
+
   Future<void> openNavigation(DoctorAppointment appointment) async {
     final hasLatLng = appointment.latitude != null && appointment.longitude != null;
     final hasAddress = appointment.address.trim().isNotEmpty;
@@ -812,7 +1084,7 @@ class HomeController extends GetxController {
       parseRaw(prefs.getString(_globalNotificationStoreKey));
 
       fromStore.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      notificationHistory.assignAll(fromStore.take(100).toList());
+      notificationHistory.assignAll(fromStore.take(_notificationHistoryLimit).toList());
       _loadedNotificationDoctorId = resolvedDoctorId > 0 ? resolvedDoctorId : null;
     } catch (_) {
       notificationHistory.clear();
@@ -833,6 +1105,23 @@ class HomeController extends GetxController {
       }
       await prefs.setString(_globalNotificationStoreKey, encoded);
     } catch (_) {}
+  }
+
+  Future<void> markNotificationAsRead(DoctorNotificationItem item) async {
+    final index = notificationHistory.indexWhere(
+      (row) =>
+          row.createdAt == item.createdAt &&
+          row.title == item.title &&
+          row.body == item.body,
+    );
+    if (index == -1) return;
+
+    final current = notificationHistory[index];
+    if (current.isRead) return;
+
+    notificationHistory[index] = current.copyWith(isRead: true);
+    notificationHistory.refresh();
+    await _saveNotificationHistory();
   }
 
   Future<void> confirmAndToggleAvailability() async {
@@ -890,50 +1179,22 @@ class HomeController extends GetxController {
   void _syncLiveTrackingForAvailability() {
     final active = profile.value?.isActiveForAppointments == true;
     if (!active) {
-      _doctorLocationSubscription?.cancel();
-      _doctorLocationSubscription = null;
-      _lastSyncedDoctorPoint = null;
+      _liveLocationTimer?.cancel();
+      _liveLocationTimer = null;
       return;
     }
 
-    if (_doctorLocationSubscription != null) return;
+    if (_liveLocationTimer != null) return;
 
-    _doctorLocationSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 100,
-      ),
-    ).listen((position) {
-      _handleDoctorPosition(position);
-    });
-
-    _refreshCurrentLocation(syncBackend: true);
-  }
-
-  Future<void> _handleDoctorPosition(Position position) async {
-    currentDoctorLatitude.value = position.latitude;
-    currentDoctorLongitude.value = position.longitude;
-    await _refreshAppointmentDistanceLabels();
-
-    final currentPoint = _GeoPoint(position.latitude, position.longitude);
-    if (_lastSyncedDoctorPoint != null) {
-      final moved = Geolocator.distanceBetween(
-        _lastSyncedDoctorPoint!.latitude,
-        _lastSyncedDoctorPoint!.longitude,
-        currentPoint.latitude,
-        currentPoint.longitude,
-      );
-      if (moved < 95) {
-        return;
+    unawaited(_refreshCurrentLocation(syncBackend: true));
+    _liveLocationTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      if (profile.value?.isActiveForAppointments == true) {
+        unawaited(_refreshCurrentLocation(syncBackend: true));
+      } else {
+        _liveLocationTimer?.cancel();
+        _liveLocationTimer = null;
       }
-    }
-
-    _lastSyncedDoctorPoint = currentPoint;
-    await _syncDoctorLiveLocation(position.latitude, position.longitude);
-    await _pushLiveLocationForActiveAppointmentsFrom(
-      latitude: position.latitude,
-      longitude: position.longitude,
-    );
+    });
   }
 
   Future<void> _syncDoctorLiveLocation(double latitude, double longitude) async {
@@ -981,11 +1242,12 @@ class HomeController extends GetxController {
         title: cleanTitle,
         body: cleanBody,
         createdAt: DateTime.now(),
+        isRead: false,
       ),
     );
 
-    if (notificationHistory.length > 100) {
-      notificationHistory.removeRange(100, notificationHistory.length);
+    if (notificationHistory.length > _notificationHistoryLimit) {
+      notificationHistory.removeRange(_notificationHistoryLimit, notificationHistory.length);
     }
 
     _saveNotificationHistory();
@@ -995,17 +1257,10 @@ class HomeController extends GetxController {
 
   Future<void> logout() async {
     _profileSyncTimer?.cancel();
-    _doctorLocationSubscription?.cancel();
+    _liveLocationTimer?.cancel();
     await SessionService.logout();
     Get.offAllNamed(AppRoutes.login);
   }
-}
-
-class _GeoPoint {
-  const _GeoPoint(this.latitude, this.longitude);
-
-  final double latitude;
-  final double longitude;
 }
 
 class DoctorNotificationItem {
@@ -1013,17 +1268,34 @@ class DoctorNotificationItem {
     required this.title,
     required this.body,
     required this.createdAt,
+    this.isRead = false,
   });
 
   final String title;
   final String body;
   final DateTime createdAt;
+  final bool isRead;
+
+  DoctorNotificationItem copyWith({
+    String? title,
+    String? body,
+    DateTime? createdAt,
+    bool? isRead,
+  }) {
+    return DoctorNotificationItem(
+      title: title ?? this.title,
+      body: body ?? this.body,
+      createdAt: createdAt ?? this.createdAt,
+      isRead: isRead ?? this.isRead,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
       'title': title,
       'body': body,
       'created_at': createdAt.toIso8601String(),
+      'is_read': isRead,
     };
   }
 
@@ -1035,6 +1307,7 @@ class DoctorNotificationItem {
       title: (json['title'] ?? 'Notification').toString(),
       body: (json['body'] ?? '').toString(),
       createdAt: parsedTime,
+      isRead: json['is_read'] == true || json['is_read']?.toString() == '1',
     );
   }
 }

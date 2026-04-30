@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'dart:collection';
 
@@ -10,6 +11,8 @@ import 'register_controller.dart';
 
 class RegisterView extends GetView<RegisterController> {
   const RegisterView({super.key});
+
+  String _requiredLabel(String label) => '$label *';
 
   @override
   Widget build(BuildContext context) {
@@ -38,40 +41,44 @@ class RegisterView extends GetView<RegisterController> {
                 _twoColumn(
                   DoctorTextField(
                     controller: controller.firstNameController,
-                    label: 'Dr First Name',
+                    label: _requiredLabel('Dr First Name'),
                     validator: (value) => controller.requiredValidator(value, 'Dr First Name'),
                   ),
                   DoctorTextField(
                     controller: controller.lastNameController,
-                    label: 'Last Name',
+                    label: _requiredLabel('Last Name'),
                     validator: (value) => controller.requiredValidator(value, 'Last Name'),
                   ),
                 ),
                 const SizedBox(height: 14),
                 DoctorTextField(
                   controller: controller.clinicNameController,
-                  label: 'Clinic Name',
+                  label: _requiredLabel('Clinic Name'),
                   validator: (value) => controller.requiredValidator(value, 'Clinic Name'),
                 ),
                 const SizedBox(height: 14),
                 _twoColumn(
                   DoctorTextField(
                     controller: controller.degreeController,
-                    label: 'Degree',
+                    label: _requiredLabel('Degree'),
                     validator: (value) => controller.requiredValidator(value, 'Degree'),
                   ),
                   DoctorTextField(
                     controller: controller.contactController,
-                    label: 'Contact Number',
+                    label: _requiredLabel('Contact Number'),
                     keyboardType: TextInputType.phone,
-                    validator: (value) => controller.requiredValidator(value, 'Contact Number'),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(10),
+                    ],
+                    validator: controller.contactNumberValidator,
                   ),
                 ),
                 const SizedBox(height: 14),
                 _twoColumn(
                   DoctorTextField(
                     controller: controller.emailController,
-                    label: 'Email',
+                    label: _requiredLabel('Email'),
                     keyboardType: TextInputType.emailAddress,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) return 'Email is required';
@@ -81,21 +88,37 @@ class RegisterView extends GetView<RegisterController> {
                   ),
                   DoctorTextField(
                     controller: controller.adharController,
-                    label: 'Aadhar Number',
+                    label: _requiredLabel('Aadhar Number'),
                     keyboardType: TextInputType.number,
-                    validator: (value) => controller.requiredValidator(value, 'Aadhar Number'),
+                    maxLength: 12,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(12),
+                    ],
+                    validator: controller.adharNumberValidator,
                   ),
                 ),
                 const SizedBox(height: 14),
                 _twoColumn(
                   DoctorTextField(
                     controller: controller.panController,
-                    label: 'PAN Number',
-                    validator: (value) => controller.requiredValidator(value, 'PAN Number'),
+                    label: _requiredLabel('PAN Number'),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                      LengthLimitingTextInputFormatter(10),
+                      TextInputFormatter.withFunction((oldValue, newValue) {
+                        final upper = newValue.text.toUpperCase();
+                        return newValue.copyWith(
+                          text: upper,
+                          selection: newValue.selection,
+                        );
+                      }),
+                    ],
+                    validator: controller.panNumberValidator,
                   ),
                   DoctorTextField(
                     controller: controller.mmcController,
-                    label: 'MMC Reg No',
+                    label: _requiredLabel('MMC Reg No'),
                     validator: (value) => controller.requiredValidator(value, 'MMC Reg No'),
                   ),
                 ),
@@ -104,7 +127,6 @@ class RegisterView extends GetView<RegisterController> {
                   DoctorTextField(
                     controller: controller.clinicRegController,
                     label: 'Clinic Reg No',
-                    validator: (value) => controller.requiredValidator(value, 'Clinic Reg No'),
                   ),
                   const SizedBox.shrink(),
                 ),
@@ -113,14 +135,14 @@ class RegisterView extends GetView<RegisterController> {
                   controller: controller.clinicAddressController,
                   label: 'Clinic Address',
                   maxLines: 3,
-                  validator: (value) => controller.requiredValidator(value, 'Clinic Address'),
                 ),
                 const SizedBox(height: 24),
                 _sectionTitle('Location Details'),
                 const SizedBox(height: 14),
                 Obx(
                   () => _dropdownField(
-                    label: 'State',
+                    label: _requiredLabel('State'),
+                    hintLabel: 'State',
                     value: controller.stateController.text.trim().isEmpty
                         ? null
                         : controller.stateController.text.trim(),
@@ -136,7 +158,8 @@ class RegisterView extends GetView<RegisterController> {
                 const SizedBox(height: 14),
                 Obx(
                   () => _dropdownField(
-                    label: 'District',
+                    label: _requiredLabel('District'),
+                    hintLabel: 'District',
                     value: controller.districtController.text.trim().isEmpty
                         ? null
                         : controller.districtController.text.trim(),
@@ -152,7 +175,8 @@ class RegisterView extends GetView<RegisterController> {
                 const SizedBox(height: 14),
                 Obx(
                   () => _dropdownField(
-                    label: 'Taluka / Subdistrict / City',
+                    label: _requiredLabel('Taluka / Subdistrict / City'),
+                    hintLabel: 'Taluka / Subdistrict / City',
                     value: controller.talukaController.text.trim().isEmpty
                         ? null
                         : controller.talukaController.text.trim(),
@@ -169,13 +193,13 @@ class RegisterView extends GetView<RegisterController> {
                 const SizedBox(height: 14),
                 DoctorTextField(
                   controller: controller.villageController,
-                  label: 'Village',
+                  label: _requiredLabel('Village'),
                   validator: (value) => controller.requiredValidator(value, 'Village'),
                 ),
                 const SizedBox(height: 14),
                 DoctorTextField(
                   controller: controller.pincodeController,
-                  label: 'Pincode',
+                  label: _requiredLabel('Pincode'),
                   keyboardType: TextInputType.number,
                   validator: (value) => controller.requiredValidator(value, 'Pincode'),
                 ),
@@ -183,45 +207,58 @@ class RegisterView extends GetView<RegisterController> {
                 _sectionTitle('Required Documents'),
                 const SizedBox(height: 12),
                 Obx(
-                  () => Column(
-                    children: [
-                      DocumentPickerTile(
-                        title: 'Aadhar Front Attachment',
-                        fileName: controller.files['adhar_document_front']?.name,
-                        onTap: () => controller.pickFile('adhar_document_front'),
-                      ),
-                      const SizedBox(height: 12),
-                      DocumentPickerTile(
-                        title: 'Aadhar Back Attachment',
-                        fileName: controller.files['adhar_document_back']?.name,
-                        onTap: () => controller.pickFile('adhar_document_back'),
-                      ),
-                      const SizedBox(height: 12),
-                      DocumentPickerTile(
-                        title: 'PAN Attachment',
-                        fileName: controller.files['pan_document']?.name,
-                        onTap: () => controller.pickFile('pan_document'),
-                      ),
-                      const SizedBox(height: 12),
-                      DocumentPickerTile(
-                        title: 'MMC Attachment',
-                        fileName: controller.files['mmc_document']?.name,
-                        onTap: () => controller.pickFile('mmc_document'),
-                      ),
-                      const SizedBox(height: 12),
-                      DocumentPickerTile(
-                        title: 'Clinic Registration Attachment',
-                        fileName: controller.files['clinic_registration_document']?.name,
-                        onTap: () => controller.pickFile('clinic_registration_document'),
-                      ),
-                      const SizedBox(height: 12),
-                      DocumentPickerTile(
-                        title: 'Doctor photo',
-                        fileName: controller.files['doctor_photo']?.name,
-                        onTap: () => controller.pickFile('doctor_photo', imageOnly: true),
-                      ),
-                    ],
-                  ),
+                  () {
+                    final isAadharFrontMissing = controller.isRequiredDocumentMissing('adhar_document_front');
+                    final isAadharBackMissing = controller.isRequiredDocumentMissing('adhar_document_back');
+                    final aadharHasError = isAadharFrontMissing || isAadharBackMissing;
+                    final aadharErrorText = isAadharFrontMissing && isAadharBackMissing
+                        ? 'Please upload Aadhar front and back.'
+                        : (isAadharFrontMissing
+                            ? 'Please upload Aadhar front.'
+                            : (isAadharBackMissing ? 'Please upload Aadhar back.' : null));
+
+                    return Column(
+                      children: [
+                        DocumentPickerTile(
+                          title: _requiredLabel('Aadhar Attachment'),
+                          fileName: _aadharAttachmentSummary(),
+                          onTap: _openAadharAttachmentPicker,
+                          hasError: aadharHasError,
+                          errorText: aadharErrorText,
+                        ),
+                        const SizedBox(height: 12),
+                        DocumentPickerTile(
+                          title: _requiredLabel('PAN Attachment'),
+                          fileName: controller.files['pan_document']?.name,
+                          onTap: () => controller.pickFile('pan_document'),
+                          hasError: controller.isRequiredDocumentMissing('pan_document'),
+                          errorText: 'Please upload PAN attachment.',
+                        ),
+                        const SizedBox(height: 12),
+                        DocumentPickerTile(
+                          title: _requiredLabel('MMC Attachment'),
+                          fileName: controller.files['mmc_document']?.name,
+                          onTap: () => controller.pickFile('mmc_document'),
+                          hasError: controller.isRequiredDocumentMissing('mmc_document'),
+                          errorText: 'Please upload MMC attachment.',
+                        ),
+                        const SizedBox(height: 12),
+                        DocumentPickerTile(
+                          title: 'Clinic Registration Attachment',
+                          fileName: controller.files['clinic_registration_document']?.name,
+                          onTap: () => controller.pickFile('clinic_registration_document'),
+                        ),
+                        const SizedBox(height: 12),
+                        DocumentPickerTile(
+                          title: _requiredLabel('Doctor photo'),
+                          fileName: controller.files['doctor_photo']?.name,
+                          onTap: () => controller.pickFile('doctor_photo', imageOnly: true),
+                          hasError: controller.isRequiredDocumentMissing('doctor_photo'),
+                          errorText: 'Please upload doctor photo.',
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
                 _sectionTitle('Security'),
@@ -229,7 +266,7 @@ class RegisterView extends GetView<RegisterController> {
                 _twoColumn(
                   DoctorTextField(
                     controller: controller.passwordController,
-                    label: 'Password',
+                    label: _requiredLabel('Password'),
                     obscureText: true,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) return 'Password is required';
@@ -239,7 +276,7 @@ class RegisterView extends GetView<RegisterController> {
                   ),
                   DoctorTextField(
                     controller: controller.repeatPasswordController,
-                    label: 'Repeat Password',
+                    label: _requiredLabel('Repeat Password'),
                     obscureText: true,
                     validator: (value) => controller.requiredValidator(value, 'Repeat Password'),
                   ),
@@ -322,6 +359,7 @@ class RegisterView extends GetView<RegisterController> {
 
   Widget _dropdownField({
     required String label,
+    required String hintLabel,
     required String? value,
     required List<String> items,
     required bool enabled,
@@ -338,7 +376,7 @@ class RegisterView extends GetView<RegisterController> {
       key: ValueKey('$label|${uniqueItems.length}|${selectedValue ?? ''}'),
       initialValue: selectedValue,
       isExpanded: true,
-      hint: Text('Select $label'),
+      hint: Text('Select $hintLabel'),
       decoration: InputDecoration(
         labelText: label,
         filled: true,
@@ -368,5 +406,93 @@ class RegisterView extends GetView<RegisterController> {
       onChanged: enabled ? onChanged : null,
       validator: validator,
     );
+  }
+
+  String? _aadharAttachmentSummary() {
+    final front = controller.files['adhar_document_front']?.name;
+    final back = controller.files['adhar_document_back']?.name;
+    if (front != null && back != null) {
+      return 'Front + Back selected';
+    }
+    if (front != null) {
+      return 'Front selected, Back pending';
+    }
+    if (back != null) {
+      return 'Back selected, Front pending';
+    }
+    return null;
+  }
+
+  void _openAadharAttachmentPicker({bool showBackOnly = false}) {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+        decoration: const BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Aadhar Attachment',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              showBackOnly
+                  ? 'Front selected. Now upload back side.'
+                  : 'Choose which side to upload',
+              style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+            ),
+            const SizedBox(height: 12),
+            if (!showBackOnly)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.credit_card_rounded, color: AppColors.primary),
+                title: const Text('Front'),
+                subtitle: Text(
+                  controller.files['adhar_document_front']?.name ?? 'Tap to upload front side',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: _pickAadharFrontThenBack,
+              ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.credit_card_rounded, color: AppColors.primary),
+              title: const Text('Back'),
+              subtitle: Text(
+                controller.files['adhar_document_back']?.name ?? 'Tap to upload back side',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onTap: _pickAadharBackAndFinish,
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  Future<void> _pickAadharFrontThenBack() async {
+    Get.back();
+    final pickedFront = await controller.pickFile('adhar_document_front');
+    if (!pickedFront) {
+      _openAadharAttachmentPicker();
+      return;
+    }
+
+    if (controller.files['adhar_document_back'] == null) {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      _openAadharAttachmentPicker(showBackOnly: true);
+    }
+  }
+
+  Future<void> _pickAadharBackAndFinish() async {
+    Get.back();
+    await controller.pickFile('adhar_document_back');
   }
 }

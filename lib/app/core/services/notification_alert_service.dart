@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
 class NotificationAlertService {
   static const MethodChannel _toneChannel = MethodChannel('doctor_corzin/alert_tone');
+  static const String _doctorProfileStoreKey = 'doctor_profile';
   static Timer? _alertTimer;
   static DateTime? _lastTriggerAt;
 
@@ -16,13 +19,59 @@ class NotificationAlertService {
   }) {
     final type = (data['type'] ?? '').toString().toLowerCase();
     final event = (data['event'] ?? '').toString().toLowerCase();
+    final status = (data['status'] ?? '').toString().toLowerCase();
     final subject = '$title $body'.toLowerCase();
 
-    if (type.contains('appointment') || event.contains('appointment')) {
+    // Ring only for fresh appointment request notifications.
+    if (event == 'appointment_created') {
       return true;
     }
 
-    return subject.contains('appointment');
+    if (type == 'doctor_appointment' && status == 'pending' && subject.contains('new appointment request')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  static Future<bool> shouldPlayForMessage({
+    required String title,
+    required String body,
+    required Map<String, dynamic> data,
+    int? currentDoctorId,
+  }) async {
+    if (!isNewAppointmentRequest(title: title, body: body, data: data)) {
+      return false;
+    }
+
+    final payloadDoctorId = int.tryParse((data['doctor_id'] ?? '').toString().trim());
+    if (payloadDoctorId == null || payloadDoctorId <= 0) {
+      return true;
+    }
+
+    final activeDoctorId = currentDoctorId ?? await _readLoggedInDoctorId();
+    if (activeDoctorId == null || activeDoctorId <= 0) {
+      return false;
+    }
+
+    return payloadDoctorId == activeDoctorId;
+  }
+
+  static Future<int?> _readLoggedInDoctorId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_doctorProfileStoreKey);
+      if (raw == null || raw.trim().isEmpty) {
+        return null;
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        return null;
+      }
+      return int.tryParse(decoded['id']?.toString() ?? '');
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<void> playFor20Seconds() async {
@@ -60,8 +109,8 @@ class NotificationAlertService {
 
   static Future<bool> _startUniqueTone() async {
     try {
-      await _toneChannel.invokeMethod('startUniqueTone');
-      return true;
+      final started = await _toneChannel.invokeMethod<bool>('startUniqueTone');
+      return started == true;
     } catch (_) {
       return false;
     }

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class FirebaseMessagingService {
   static const String globalNotificationStoreKey = 'doctor_notification_history_global';
+  static const int _notificationHistoryLimit = 200;
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
   Future<String?> initialise() async {
@@ -65,10 +66,11 @@ class FirebaseMessagingService {
         'body': cleanBody,
         'type': type,
         'created_at': DateTime.now().toIso8601String(),
+        'is_read': false,
       });
 
-      if (existing.length > 100) {
-        existing.removeRange(100, existing.length);
+      if (existing.length > _notificationHistoryLimit) {
+        existing.removeRange(_notificationHistoryLimit, existing.length);
       }
 
       await prefs.setString(globalNotificationStoreKey, jsonEncode(existing));

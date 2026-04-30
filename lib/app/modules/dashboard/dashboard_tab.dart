@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -20,9 +22,29 @@ class DashboardTab extends StatefulWidget {
 class _DashboardTabState extends State<DashboardTab> {
   final PageController _bannerController = PageController(viewportFraction: 0.88);
   int _bannerIndex = 0;
+  int _bannerCount = 0;
+  Timer? _bannerAutoScrollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _bannerAutoScrollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted) return;
+      if (!_bannerController.hasClients) return;
+      if (_bannerCount <= 1) return;
+
+      final nextIndex = (_bannerIndex + 1) % _bannerCount;
+      _bannerController.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
 
   @override
   void dispose() {
+    _bannerAutoScrollTimer?.cancel();
     _bannerController.dispose();
     super.dispose();
   }
@@ -73,6 +95,7 @@ class _DashboardTabState extends State<DashboardTab> {
           )
           .where((item) => item.image.trim().isNotEmpty)
           .toList();
+      _bannerCount = bannerData.length;
 
       if (_bannerIndex >= bannerData.length && bannerData.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -145,7 +168,7 @@ class _DashboardTabState extends State<DashboardTab> {
                     );
                   }),
                   Obx(() {
-                    final count = widget.controller.notificationHistory.length;
+                    final count = widget.controller.notificationHistory.where((item) => !item.isRead).length;
                     return Stack(
                       clipBehavior: Clip.none,
                       children: [
@@ -425,31 +448,63 @@ class _DashboardTabState extends State<DashboardTab> {
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (_, index) {
                       final item = widget.controller.notificationHistory[index];
-                      return Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF4FAF4),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE4EFE4)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.title,
-                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => widget.controller.markNotificationAsRead(item),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: item.isRead ? const Color(0xFFF4FAF4) : const Color(0xFFFFF8E1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: item.isRead ? const Color(0xFFE4EFE4) : const Color(0xFFFFE082),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              item.body,
-                              style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              DateFormat('dd MMM yyyy, hh:mm a').format(item.createdAt.toLocal()),
-                              style: const TextStyle(fontSize: 11.5, color: AppColors.grey),
-                            ),
-                          ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.title,
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: item.isRead ? AppColors.black : const Color(0xFF8A6D00),
+                                      ),
+                                    ),
+                                  ),
+                                  if (!item.isRead)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFFE082),
+                                        borderRadius: BorderRadius.circular(999),
+                                      ),
+                                      child: const Text(
+                                        'Unread',
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF8A6D00),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                item.body,
+                                style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                DateFormat('dd MMM yyyy, hh:mm a').format(item.createdAt.toLocal()),
+                                style: const TextStyle(fontSize: 11.5, color: AppColors.grey),
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     },
