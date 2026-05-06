@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/doctor_text_field.dart';
 import '../../../core/widgets/primary_button.dart';
+import '../../../core/services/session_service.dart';
 import '../../../routes/app_pages.dart';
 import 'login_controller.dart';
 
@@ -79,7 +80,16 @@ class LoginView extends GetView<LoginController> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () => Get.toNamed(AppRoutes.forgotPassword),
+                      onPressed: () async {
+                        final email = controller.emailController.text.trim();
+                        if (email.isNotEmpty) {
+                          await SessionService.saveLastLoginEmail(email);
+                        }
+                        Get.toNamed(
+                          AppRoutes.forgotPassword,
+                          arguments: {'email': email},
+                        );
+                      },
                       child: const Text(
                         'Forgot Password?',
                         style: TextStyle(

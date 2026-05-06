@@ -17,6 +17,7 @@ class DoctorTextField extends StatelessWidget {
     this.singleLineVerticalPadding,
     this.maxLength,
     this.inputFormatters,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -32,6 +33,7 @@ class DoctorTextField extends StatelessWidget {
   final double? singleLineVerticalPadding;
   final int? maxLength;
   final List<TextInputFormatter>? inputFormatters;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +63,7 @@ class DoctorTextField extends StatelessWidget {
           maxLines: maxLines,
           readOnly: readOnly,
           onTap: onTap,
+          onChanged: onChanged,
           obscureText: obscureText,
           style: const TextStyle(
             fontSize: 12,

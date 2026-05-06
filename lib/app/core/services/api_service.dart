@@ -46,6 +46,38 @@ class ApiService {
     return _parseResponse(response);
   }
 
+  Future<Map<String, dynamic>> lookupForgotPasswordDoctor({
+    required String email,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/forgot-password/lookup'),
+      headers: {'Accept': 'application/json'},
+      body: {'email': email},
+    );
+
+    return _parseResponse(response);
+  }
+
+  Future<Map<String, dynamic>> resetForgotPassword({
+    required String email,
+    required String firebaseIdToken,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/forgot-password/reset'),
+      headers: {'Accept': 'application/json'},
+      body: {
+        'email': email,
+        'firebase_id_token': firebaseIdToken,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+      },
+    );
+
+    return _parseResponse(response);
+  }
+
   Future<Map<String, dynamic>> register({
     required Map<String, String> fields,
     required Map<String, PlatformFile> files,

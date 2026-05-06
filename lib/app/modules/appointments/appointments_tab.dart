@@ -1369,8 +1369,11 @@ class _AppointmentCard extends StatelessWidget {
         }
       }
       if (isInProgress && hasTreatmentDetails) {
+        final animalName = appointment.animalName.trim().isEmpty
+            ? 'Animal'
+            : appointment.animalName.trim();
         fullWidthCompleteButton = _actionButton(
-          label: 'Complete',
+          label: 'Complete $animalName Treatment',
           background: const Color(0xFF2E7D32),
           foreground: AppColors.white,
           onPressed: onComplete,

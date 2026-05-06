@@ -27,6 +27,7 @@ class RegisterController extends GetxController {
   final clinicNameController = TextEditingController();
   final degreeController = TextEditingController();
   final contactController = TextEditingController();
+  final whatsappController = TextEditingController();
   final emailController = TextEditingController();
   final adharController = TextEditingController();
   final panController = TextEditingController();
@@ -61,6 +62,7 @@ class RegisterController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    contactController.addListener(_syncWhatsappFromContact);
     stateController.text = 'Maharashtra';
     _loadSettings();
     _loadLocationCascade();
@@ -208,6 +210,17 @@ class RegisterController extends GetxController {
     return null;
   }
 
+  String? optionalContactNumberValidator(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    final contact = value.trim();
+    if (!RegExp(r'^\d{10}$').hasMatch(contact)) {
+      return 'WhatsApp Number must be exactly 10 digits';
+    }
+    return null;
+  }
+
   String? panNumberValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'PAN Number is required';
@@ -263,6 +276,9 @@ class RegisterController extends GetxController {
           'clinic_name': clinicNameController.text.trim(),
           'degree': degreeController.text.trim(),
           'contact_number': contactController.text.trim(),
+          'whatsapp_number': whatsappController.text.trim().isEmpty
+              ? contactController.text.trim()
+              : whatsappController.text.trim(),
           'email': emailController.text.trim(),
           'adhar_number': adharController.text.trim(),
           'pan_number': panController.text.trim(),
@@ -298,6 +314,7 @@ class RegisterController extends GetxController {
       clinicNameController,
       degreeController,
       contactController,
+      whatsappController,
       emailController,
       adharController,
       panController,
@@ -328,4 +345,19 @@ class RegisterController extends GetxController {
     }
     return unique.values.toList(growable: false);
   }
+
+  void _syncWhatsappFromContact() {
+    final contact = contactController.text.trim();
+    final currentWhatsapp = whatsappController.text.trim();
+
+    if (currentWhatsapp.isEmpty || currentWhatsapp == _lastAutoFilledWhatsapp) {
+      _lastAutoFilledWhatsapp = contact;
+      whatsappController.value = whatsappController.value.copyWith(
+        text: contact,
+        selection: TextSelection.collapsed(offset: contact.length),
+      );
+    }
+  }
+
+  String _lastAutoFilledWhatsapp = '';
 }

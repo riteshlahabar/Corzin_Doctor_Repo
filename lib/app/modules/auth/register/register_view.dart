@@ -51,12 +51,6 @@ class RegisterView extends GetView<RegisterController> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                DoctorTextField(
-                  controller: controller.clinicNameController,
-                  label: _requiredLabel('Clinic Name'),
-                  validator: (value) => controller.requiredValidator(value, 'Clinic Name'),
-                ),
-                const SizedBox(height: 14),
                 _twoColumn(
                   DoctorTextField(
                     controller: controller.degreeController,
@@ -73,6 +67,17 @@ class RegisterView extends GetView<RegisterController> {
                     ],
                     validator: controller.contactNumberValidator,
                   ),
+                ),
+                const SizedBox(height: 14),
+                DoctorTextField(
+                  controller: controller.whatsappController,
+                  label: 'WhatsApp Number',
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                  validator: controller.optionalContactNumberValidator,
                 ),
                 const SizedBox(height: 14),
                 _twoColumn(
@@ -125,10 +130,13 @@ class RegisterView extends GetView<RegisterController> {
                 const SizedBox(height: 14),
                 _twoColumn(
                   DoctorTextField(
+                    controller: controller.clinicNameController,
+                    label: 'Clinic Name',
+                  ),
+                  DoctorTextField(
                     controller: controller.clinicRegController,
                     label: 'Clinic Reg No',
                   ),
-                  const SizedBox.shrink(),
                 ),
                 const SizedBox(height: 14),
                 DoctorTextField(
