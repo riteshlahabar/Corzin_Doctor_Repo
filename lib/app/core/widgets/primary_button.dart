@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import 'cow_walking_loader.dart';
 
 class PrimaryButton extends StatelessWidget {
   const PrimaryButton({
@@ -34,8 +35,13 @@ class PrimaryButton extends StatelessWidget {
         child: loading
             ? const SizedBox(
                 height: 22,
-                width: 22,
-                child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                width: 40,
+                child: CowWalkingLoader(
+                  size: 20,
+                  compact: true,
+                  showLabel: false,
+                  color: Colors.white,
+                ),
               )
             : Text(
                 label,

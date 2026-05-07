@@ -256,15 +256,15 @@ class _DashboardTabState extends State<DashboardTab> {
                 children: [
                   Row(
                     children: [
-                      Expanded(child: _SmallInfoCard(title: 'Visits', value: '$todayVisits')),
+                      Expanded(child: _SmallInfoCard(title: 'Request Total', value: '$todayVisits')),
                       const SizedBox(width: 10),
-                      Expanded(child: _SmallInfoCard(title: 'Pending', value: '$pending')),
+                      Expanded(child: _SmallInfoCard(title: 'Accepted Request', value: '$pending')),
                     ],
                   ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Expanded(child: _SmallInfoCard(title: 'Completed', value: '$completed')),
+                      Expanded(child: _SmallInfoCard(title: 'Completed Request', value: '$completed')),
                       const SizedBox(width: 10),
                       Expanded(child: _SmallInfoCard(title: 'Earnings', value: 'Rs ${earnings.toStringAsFixed(0)}')),
                     ],

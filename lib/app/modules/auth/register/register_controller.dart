@@ -1,9 +1,12 @@
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:play_install_referrer/play_install_referrer.dart';
 
 import '../../../core/services/api_service.dart';
+import '../../../core/services/session_service.dart';
 import '../../../routes/app_pages.dart';
 
 class RegisterController extends GetxController {
@@ -29,6 +32,7 @@ class RegisterController extends GetxController {
   final contactController = TextEditingController();
   final whatsappController = TextEditingController();
   final emailController = TextEditingController();
+  final referralCodeController = TextEditingController();
   final adharController = TextEditingController();
   final panController = TextEditingController();
   final mmcController = TextEditingController();
@@ -58,14 +62,17 @@ class RegisterController extends GetxController {
   final talukas = <String>[].obs;
   int _stateRequestToken = 0;
   int _districtRequestToken = 0;
+  bool _disposed = false;
 
   @override
   void onInit() {
     super.onInit();
     contactController.addListener(_syncWhatsappFromContact);
+    referralCodeController.text = SessionService.pendingReferralCode;
     stateController.text = 'Maharashtra';
     _loadSettings();
     _loadLocationCascade();
+    _prefillReferralCodeFromInstallReferrer();
   }
 
   @override
@@ -77,6 +84,7 @@ class RegisterController extends GetxController {
   Future<void> _loadSettings() async {
     try {
       final settings = await _apiService.fetchDoctorSettings();
+      if (_disposed || isClosed) return;
       if (settings.termsAndConditions.trim().isNotEmpty) {
         termsText.value = settings.termsAndConditions.trim();
       }
@@ -84,9 +92,11 @@ class RegisterController extends GetxController {
   }
 
   Future<void> _loadLocationCascade() async {
+    if (_disposed || isClosed) return;
     isLocationLoading.value = true;
     try {
       final stateList = await _apiService.fetchLocationStates();
+      if (_disposed || isClosed) return;
       states.assignAll(_uniqueLocationValues(stateList));
 
       if (!states.contains(stateController.text.trim())) {
@@ -97,16 +107,20 @@ class RegisterController extends GetxController {
 
       await onStateChanged(stateController.text.trim(), autoSelectFirst: false);
     } catch (_) {
+      if (_disposed || isClosed) return;
       if (states.isEmpty) {
         states.assignAll(['Maharashtra']);
         stateController.text = 'Maharashtra';
       }
     } finally {
-      isLocationLoading.value = false;
+      if (!_disposed && !isClosed) {
+        isLocationLoading.value = false;
+      }
     }
   }
 
   Future<void> onStateChanged(String state, {bool autoSelectFirst = false}) async {
+    if (_disposed || isClosed) return;
     final selected = state.trim();
     if (selected.isEmpty) return;
     final token = ++_stateRequestToken;
@@ -121,6 +135,7 @@ class RegisterController extends GetxController {
 
     try {
       final districtList = await _apiService.fetchLocationDistricts(state: selected);
+      if (_disposed || isClosed) return;
       if (token != _stateRequestToken || stateController.text.trim() != selected) return;
       districts.assignAll(_uniqueLocationValues(districtList));
       if (autoSelectFirst && districts.isNotEmpty) {
@@ -130,6 +145,7 @@ class RegisterController extends GetxController {
   }
 
   Future<void> onDistrictChanged(String district, {bool autoSelectFirst = false}) async {
+    if (_disposed || isClosed) return;
     final selectedState = stateController.text.trim();
     final selectedDistrict = district.trim();
     if (selectedState.isEmpty || selectedDistrict.isEmpty) return;
@@ -145,6 +161,7 @@ class RegisterController extends GetxController {
         state: selectedState,
         district: selectedDistrict,
       );
+      if (_disposed || isClosed) return;
       if (token != _districtRequestToken) return;
       if (stateController.text.trim() != selectedState) return;
       if (districtController.text.trim() != selectedDistrict) return;
@@ -156,6 +173,7 @@ class RegisterController extends GetxController {
   }
 
   Future<void> onTalukaChanged(String taluka, {bool autoSelectFirst = false}) async {
+    if (_disposed || isClosed) return;
     final selectedTaluka = taluka.trim();
     if (selectedTaluka.isEmpty) return;
 
@@ -221,6 +239,17 @@ class RegisterController extends GetxController {
     return null;
   }
 
+  String? whatsappNumberValidator(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'WhatsApp Number is required';
+    }
+    final contact = value.trim();
+    if (!RegExp(r'^\d{10}$').hasMatch(contact)) {
+      return 'WhatsApp Number must be exactly 10 digits';
+    }
+    return null;
+  }
+
   String? panNumberValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'PAN Number is required';
@@ -276,10 +305,9 @@ class RegisterController extends GetxController {
           'clinic_name': clinicNameController.text.trim(),
           'degree': degreeController.text.trim(),
           'contact_number': contactController.text.trim(),
-          'whatsapp_number': whatsappController.text.trim().isEmpty
-              ? contactController.text.trim()
-              : whatsappController.text.trim(),
+          'whatsapp_number': whatsappController.text.trim(),
           'email': emailController.text.trim(),
+          'referral_code': referralCodeController.text.trim(),
           'adhar_number': adharController.text.trim(),
           'pan_number': panController.text.trim(),
           'mmc_registration_number': mmcController.text.trim(),
@@ -297,17 +325,26 @@ class RegisterController extends GetxController {
         },
         files: uploadFiles,
       );
+      await SessionService.clearPendingReferralCode();
       Get.snackbar('Registration successful', response['message']?.toString() ?? 'Doctor registration submitted');
-      Get.offAllNamed(AppRoutes.login);
+      if (Get.currentRoute == AppRoutes.register && Get.previousRoute == AppRoutes.login) {
+        Get.back();
+      } else {
+        Get.offNamed(AppRoutes.login);
+      }
     } catch (error) {
       Get.snackbar('Registration failed', error.toString().replaceFirst('Exception: ', ''));
     } finally {
-      isSubmitting.value = false;
+      if (!_disposed && !isClosed) {
+        isSubmitting.value = false;
+      }
     }
   }
 
   @override
   void onClose() {
+    _disposed = true;
+    contactController.removeListener(_syncWhatsappFromContact);
     for (final controller in [
       firstNameController,
       lastNameController,
@@ -316,6 +353,7 @@ class RegisterController extends GetxController {
       contactController,
       whatsappController,
       emailController,
+      referralCodeController,
       adharController,
       panController,
       mmcController,
@@ -347,6 +385,7 @@ class RegisterController extends GetxController {
   }
 
   void _syncWhatsappFromContact() {
+    if (_disposed || isClosed) return;
     final contact = contactController.text.trim();
     final currentWhatsapp = whatsappController.text.trim();
 
@@ -360,4 +399,43 @@ class RegisterController extends GetxController {
   }
 
   String _lastAutoFilledWhatsapp = '';
+
+  Future<void> _prefillReferralCodeFromInstallReferrer() async {
+    if (!Platform.isAndroid || _disposed || isClosed) return;
+    if (referralCodeController.text.trim().isNotEmpty) return;
+
+    try {
+      final details = await PlayInstallReferrer.installReferrer;
+      if (_disposed || isClosed) return;
+      final raw = (details.installReferrer ?? '').trim();
+      final extracted = _extractReferralCode(raw);
+      if (extracted == null || extracted.isEmpty) return;
+
+      referralCodeController.value = referralCodeController.value.copyWith(
+        text: extracted,
+        selection: TextSelection.collapsed(offset: extracted.length),
+      );
+      if (_disposed || isClosed) return;
+      await SessionService.savePendingReferralCode(extracted);
+    } catch (_) {}
+  }
+
+  String? _extractReferralCode(String rawReferrer) {
+    final raw = rawReferrer.trim();
+    if (raw.isEmpty) return null;
+
+    Uri? uri = Uri.tryParse(raw);
+    if (uri == null || !uri.hasQuery) {
+      uri = Uri.tryParse('https://ref.local/?$raw');
+    }
+    final query = uri?.queryParameters ?? const <String, String>{};
+
+    final candidate = (query['doc_ref'] ?? query['referral_code'] ?? query['ref'] ?? '').trim();
+    if (candidate.isEmpty) return null;
+
+    final normalized = candidate.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9_-]'), '');
+    if (normalized.length < 4) return null;
+
+    return normalized;
+  }
 }

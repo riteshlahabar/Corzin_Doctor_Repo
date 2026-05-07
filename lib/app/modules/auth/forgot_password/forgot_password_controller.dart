@@ -96,6 +96,13 @@ class ForgotPasswordController extends GetxController {
     } catch (error) {
       accountFetched.value = false;
       _firebasePhoneNumber = null;
+      final profile = SessionService.profile;
+      if (profile != null && profile.email.trim().toLowerCase() == email.toLowerCase()) {
+        final fallbackMobile = profile.contactNumber.trim();
+        if (fallbackMobile.isNotEmpty) {
+          mobileController.text = fallbackMobile;
+        }
+      }
       Get.snackbar('Account lookup failed', error.toString().replaceFirst('Exception: ', ''));
     } finally {
       isFetchingAccount.value = false;

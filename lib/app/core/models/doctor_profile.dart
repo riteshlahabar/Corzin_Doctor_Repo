@@ -6,7 +6,11 @@ class DoctorProfile {
     required this.clinicName,
     required this.degree,
     required this.contactNumber,
+    required this.whatsappNumber,
     required this.email,
+    required this.referralCode,
+    required this.referralPoints,
+    required this.referralLink,
     required this.adharNumber,
     required this.panNumber,
     required this.mmcRegistrationNumber,
@@ -34,7 +38,11 @@ class DoctorProfile {
   final String clinicName;
   final String degree;
   final String contactNumber;
+  final String whatsappNumber;
   final String email;
+  final String referralCode;
+  final int referralPoints;
+  final String referralLink;
   final String adharNumber;
   final String panNumber;
   final String mmcRegistrationNumber;
@@ -67,7 +75,11 @@ class DoctorProfile {
       clinicName: json['clinic_name'] ?? '',
       degree: json['degree'] ?? '',
       contactNumber: json['contact_number'] ?? '',
+      whatsappNumber: json['whatsapp_number'] ?? '',
       email: json['email'] ?? '',
+      referralCode: json['referral_code'] ?? '',
+      referralPoints: int.tryParse((json['referral_points'] ?? 0).toString()) ?? 0,
+      referralLink: json['referral_link'] ?? '',
       adharNumber: json['adhar_number'] ?? '',
       panNumber: json['pan_number'] ?? '',
       mmcRegistrationNumber: json['mmc_registration_number'] ?? '',
@@ -99,7 +111,11 @@ class DoctorProfile {
       'clinic_name': clinicName,
       'degree': degree,
       'contact_number': contactNumber,
+      'whatsapp_number': whatsappNumber,
       'email': email,
+      'referral_code': referralCode,
+      'referral_points': referralPoints,
+      'referral_link': referralLink,
       'adhar_number': adharNumber,
       'pan_number': panNumber,
       'mmc_registration_number': mmcRegistrationNumber,

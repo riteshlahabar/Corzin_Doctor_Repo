@@ -53,11 +53,6 @@ class RegisterView extends GetView<RegisterController> {
                 const SizedBox(height: 14),
                 _twoColumn(
                   DoctorTextField(
-                    controller: controller.degreeController,
-                    label: _requiredLabel('Degree'),
-                    validator: (value) => controller.requiredValidator(value, 'Degree'),
-                  ),
-                  DoctorTextField(
                     controller: controller.contactController,
                     label: _requiredLabel('Contact Number'),
                     keyboardType: TextInputType.phone,
@@ -67,29 +62,51 @@ class RegisterView extends GetView<RegisterController> {
                     ],
                     validator: controller.contactNumberValidator,
                   ),
+                  DoctorTextField(
+                    controller: controller.whatsappController,
+                    label: _requiredLabel('WhatsApp Number'),
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(10),
+                    ],
+                    validator: controller.whatsappNumberValidator,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 DoctorTextField(
-                  controller: controller.whatsappController,
-                  label: 'WhatsApp Number',
-                  keyboardType: TextInputType.phone,
+                  controller: controller.emailController,
+                  label: _requiredLabel('Email'),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return 'Email is required';
+                    if (!GetUtils.isEmail(value.trim())) return 'Enter a valid email';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 14),
+                DoctorTextField(
+                  controller: controller.referralCodeController,
+                  label: 'Referral Code (Optional)',
+                  hint: 'Auto-filled if opened from referral link',
                   inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_-]')),
+                    LengthLimitingTextInputFormatter(40),
+                    TextInputFormatter.withFunction((oldValue, newValue) {
+                      final upper = newValue.text.toUpperCase();
+                      return newValue.copyWith(
+                        text: upper,
+                        selection: TextSelection.collapsed(offset: upper.length),
+                      );
+                    }),
                   ],
-                  validator: controller.optionalContactNumberValidator,
                 ),
                 const SizedBox(height: 14),
                 _twoColumn(
                   DoctorTextField(
-                    controller: controller.emailController,
-                    label: _requiredLabel('Email'),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) return 'Email is required';
-                      if (!GetUtils.isEmail(value.trim())) return 'Enter a valid email';
-                      return null;
-                    },
+                    controller: controller.degreeController,
+                    label: _requiredLabel('Degree'),
+                    validator: (value) => controller.requiredValidator(value, 'Degree'),
                   ),
                   DoctorTextField(
                     controller: controller.adharController,

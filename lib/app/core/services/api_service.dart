@@ -78,6 +78,30 @@ class ApiService {
     return _parseResponse(response);
   }
 
+  Future<Map<String, dynamic>> fetchDoctorReports({
+    required int doctorId,
+    required String tab,
+    required DateTime date,
+    String search = '',
+  }) async {
+    String two(int value) => value.toString().padLeft(2, '0');
+    final dateValue = '${date.year}-${two(date.month)}-${two(date.day)}';
+    final uri = Uri.parse('${ApiConstants.baseUrl}/doctor/reports/$doctorId').replace(
+      queryParameters: {
+        'tab': tab,
+        'date': dateValue,
+        if (search.trim().isNotEmpty) 'search': search.trim(),
+      },
+    );
+
+    final response = await _client.get(
+      uri,
+      headers: {'Accept': 'application/json'},
+    );
+
+    return _parseResponse(response);
+  }
+
   Future<Map<String, dynamic>> register({
     required Map<String, String> fields,
     required Map<String, PlatformFile> files,
@@ -169,6 +193,17 @@ class ApiService {
     return DoctorProfile.fromJson(body['data'] as Map<String, dynamic>);
   }
 
+  Future<Map<String, dynamic>> fetchDoctorReferrals({
+    required int doctorId,
+  }) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/referrals/$doctorId'),
+      headers: {'Accept': 'application/json'},
+    );
+
+    return _parseResponse(response);
+  }
+
   Future<DoctorProfile> updateDoctorProfile({
     required int doctorId,
     required Map<String, String> fields,
@@ -216,6 +251,24 @@ class ApiService {
     );
     final body = _parseResponse(response);
     return DoctorProfile.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>> changeDoctorPassword({
+    required int doctorId,
+    required String currentPassword,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/profile/$doctorId/change-password'),
+      headers: {'Accept': 'application/json'},
+      body: {
+        'current_password': currentPassword,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+      },
+    );
+    return _parseResponse(response);
   }
 
   Future<List<DoctorAppointment>> fetchDoctorAppointments({

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/widgets/cow_walking_loader.dart';
 import '../../core/models/doctor_appointment.dart';
 import '../../core/theme/app_colors.dart';
 import '../../routes/app_pages.dart';
@@ -69,7 +70,7 @@ class AppointmentsTab extends StatelessWidget {
             if (controller.appointmentLoading.value)
               const Padding(
                 padding: EdgeInsets.only(top: 40),
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(child: CowWalkingLoader(label: 'Fetching appointments...')),
               )
             else if (appointments.isEmpty)
               const Padding(

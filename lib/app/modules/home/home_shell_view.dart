@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../core/widgets/bottom_navigation_bar.dart';
+import '../../core/widgets/cow_walking_loader.dart';
 import '../../routes/app_pages.dart';
 import '../appointments/appointments_tab.dart';
 import '../dashboard/dashboard_tab.dart';
@@ -19,7 +20,7 @@ class HomeView extends GetView<HomeController> {
       if (!controller.appReady.value) {
         return const Scaffold(
           body: Center(
-            child: CircularProgressIndicator(),
+            child: CowWalkingLoader(label: 'Preparing app...'),
           ),
         );
       }
@@ -32,7 +33,9 @@ class HomeView extends GetView<HomeController> {
           }
         });
         return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
+          body: Center(
+            child: CowWalkingLoader(label: 'Loading profile...'),
+          ),
         );
       }
 

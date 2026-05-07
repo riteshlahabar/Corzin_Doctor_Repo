@@ -13,6 +13,7 @@ import '../../core/models/doctor_appointment.dart';
 import '../../core/models/doctor_profile.dart';
 import '../../core/models/doctor_settings.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/doctor_location_background_service.dart';
 import '../../core/services/firebase_messaging_service.dart';
 import '../../core/services/notification_alert_service.dart';
 import '../../core/services/session_service.dart';
@@ -60,16 +61,26 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     appReady.value = false;
     await _ensureRequiredPermissionsLoop();
     _loadNotificationHistory();
-    await refreshProfile();
-    await _ensureDoctorActiveByDefault();
-    await refreshAppointments(refreshLocationAfter: false);
-    await refreshSettings();
-    _startRealtimeDoctorSync();
-    _syncLiveTrackingForAvailability();
-    await initialiseNotifications();
     if (!isClosed) {
       appReady.value = true;
+      unawaited(_finishBootstrapInBackground());
     }
+  }
+
+  Future<void> _finishBootstrapInBackground() async {
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (isClosed) return;
+
+    _startRealtimeDoctorSync();
+    unawaited(initialiseNotifications());
+    unawaited(refreshSettings());
+    unawaited(refreshAppointments(silent: true, refreshLocationAfter: false));
+
+    await refreshProfile();
+    if (isClosed) return;
+    await _ensureDoctorActiveByDefault();
+    if (isClosed) return;
+    _syncLiveTrackingForAvailability();
   }
 
   @override
@@ -230,6 +241,121 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  Future<List<DoctorAppPermissionItem>> loadAppPermissionItems() async {
+    final items = <DoctorAppPermissionItem>[];
+
+    try {
+      final notificationSettings = await FirebaseMessaging.instance.getNotificationSettings();
+      final notificationEnabled =
+          notificationSettings.authorizationStatus == AuthorizationStatus.authorized ||
+          notificationSettings.authorizationStatus == AuthorizationStatus.provisional;
+
+      final locationServiceEnabled = await Geolocator.isLocationServiceEnabled();
+      final locationPermission = await Geolocator.checkPermission();
+      final hasLocationPermission =
+          locationPermission == LocationPermission.whileInUse ||
+          locationPermission == LocationPermission.always;
+      final hasAlwaysLocationPermission = locationPermission == LocationPermission.always;
+
+      items.addAll([
+        DoctorAppPermissionItem(
+          type: DoctorAppPermissionType.notification,
+          title: 'Notification',
+          subtitle: 'Required to receive appointment requests.',
+          enabled: notificationEnabled,
+        ),
+        DoctorAppPermissionItem(
+          type: DoctorAppPermissionType.locationService,
+          title: 'Location Service',
+          subtitle: 'Required for live doctor location.',
+          enabled: locationServiceEnabled,
+        ),
+        DoctorAppPermissionItem(
+          type: DoctorAppPermissionType.locationPermission,
+          title: 'Location Permission',
+          subtitle: 'Required to fetch current location.',
+          enabled: hasLocationPermission,
+        ),
+        DoctorAppPermissionItem(
+          type: DoctorAppPermissionType.backgroundLocation,
+          title: 'Background Location',
+          subtitle: 'Required to sync location when app is minimized.',
+          enabled: hasAlwaysLocationPermission,
+        ),
+        DoctorAppPermissionItem(
+          type: DoctorAppPermissionType.alertSound,
+          title: 'Alert Sound',
+          subtitle: 'Required for appointment ringing alerts.',
+          enabled: notificationEnabled,
+        ),
+      ]);
+    } catch (_) {
+      items.add(
+        const DoctorAppPermissionItem(
+          type: DoctorAppPermissionType.appSettings,
+          title: 'App Permissions',
+          subtitle: 'Open Android app settings to review permissions.',
+          enabled: false,
+        ),
+      );
+    }
+
+    return items;
+  }
+
+  Future<void> updateAppPermission(DoctorAppPermissionItem item, bool enabled) async {
+    try {
+      switch (item.type) {
+        case DoctorAppPermissionType.notification:
+          if (enabled) {
+            await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+          } else {
+            await Geolocator.openAppSettings();
+          }
+          break;
+        case DoctorAppPermissionType.locationService:
+          await Geolocator.openLocationSettings();
+          break;
+        case DoctorAppPermissionType.locationPermission:
+          if (enabled) {
+            var permission = await Geolocator.checkPermission();
+            if (permission == LocationPermission.denied) {
+              permission = await Geolocator.requestPermission();
+            }
+            if (permission == LocationPermission.deniedForever) {
+              await Geolocator.openAppSettings();
+            }
+          } else {
+            await Geolocator.openAppSettings();
+          }
+          break;
+        case DoctorAppPermissionType.backgroundLocation:
+          if (enabled) {
+            var permission = await Geolocator.checkPermission();
+            if (permission == LocationPermission.denied) {
+              permission = await Geolocator.requestPermission();
+            }
+            if (permission != LocationPermission.always) {
+              Get.snackbar(
+                'Background Location',
+                'Please set Location permission to Allow all the time.',
+              );
+              await Geolocator.openAppSettings();
+            }
+          } else {
+            await Geolocator.openAppSettings();
+          }
+          break;
+        case DoctorAppPermissionType.alertSound:
+        case DoctorAppPermissionType.appSettings:
+          await Geolocator.openAppSettings();
+          break;
+      }
+    } catch (error) {
+      Get.snackbar('Permission Error', error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   Future<void> _ensureDoctorActiveByDefault() async {
     final current = profile.value;
     if (current == null) return;
@@ -308,6 +434,60 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       Get.snackbar('Profile Updated', successMessage);
     } finally {
       loading.value = false;
+    }
+  }
+
+  Future<bool> changeDoctorPassword({
+    required String currentPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    final current = profile.value;
+    if (current == null) return false;
+
+    try {
+      loading.value = true;
+      final response = await _apiService.changeDoctorPassword(
+        doctorId: current.id,
+        currentPassword: currentPassword,
+        password: newPassword,
+        passwordConfirmation: confirmPassword,
+      );
+      Get.snackbar(
+        'Password Updated',
+        response['message']?.toString() ?? 'Password changed successfully.',
+      );
+      return true;
+    } catch (error) {
+      Get.snackbar(
+        'Change Failed',
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+      return false;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> fetchDoctorReferrals({bool showError = true}) async {
+    final current = profile.value;
+    if (current == null) return null;
+
+    try {
+      final response = await _apiService.fetchDoctorReferrals(doctorId: current.id);
+      final data = response['data'];
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      return null;
+    } catch (error) {
+      if (showError) {
+        Get.snackbar(
+          'Referral Error',
+          error.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+      return null;
     }
   }
 
@@ -1181,18 +1361,22 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (!active) {
       _liveLocationTimer?.cancel();
       _liveLocationTimer = null;
+      unawaited(DoctorLocationBackgroundService.syncWithDoctorState(profile.value));
       return;
     }
+
+    unawaited(DoctorLocationBackgroundService.syncWithDoctorState(profile.value));
 
     if (_liveLocationTimer != null) return;
 
     unawaited(_refreshCurrentLocation(syncBackend: true));
-    _liveLocationTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+    _liveLocationTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (profile.value?.isActiveForAppointments == true) {
         unawaited(_refreshCurrentLocation(syncBackend: true));
       } else {
         _liveLocationTimer?.cancel();
         _liveLocationTimer = null;
+        unawaited(DoctorLocationBackgroundService.syncWithDoctorState(profile.value));
       }
     });
   }
@@ -1258,9 +1442,33 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   Future<void> logout() async {
     _profileSyncTimer?.cancel();
     _liveLocationTimer?.cancel();
+    await DoctorLocationBackgroundService.stop();
     await SessionService.logout();
     Get.offAllNamed(AppRoutes.login);
   }
+}
+
+enum DoctorAppPermissionType {
+  notification,
+  locationService,
+  locationPermission,
+  backgroundLocation,
+  alertSound,
+  appSettings,
+}
+
+class DoctorAppPermissionItem {
+  const DoctorAppPermissionItem({
+    required this.type,
+    required this.title,
+    required this.subtitle,
+    required this.enabled,
+  });
+
+  final DoctorAppPermissionType type;
+  final String title;
+  final String subtitle;
+  final bool enabled;
 }
 
 class DoctorNotificationItem {
@@ -1311,4 +1519,3 @@ class DoctorNotificationItem {
     );
   }
 }
-

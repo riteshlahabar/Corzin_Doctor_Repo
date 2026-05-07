@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'app/app.dart';
+import 'app/core/services/doctor_location_background_service.dart';
 import 'app/core/services/firebase_messaging_service.dart';
 import 'app/core/services/notification_alert_service.dart';
 import 'app/core/services/session_service.dart';
@@ -49,5 +50,6 @@ Future<void> main() async {
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(_doctorFirebaseBackgroundHandler);
   await SessionService.init();
+  await DoctorLocationBackgroundService.initialize();
   runApp(const CorzinDoctorApp());
 }

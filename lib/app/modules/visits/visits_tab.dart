@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/models/doctor_appointment.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/cow_walking_loader.dart';
 import '../home/home_controller.dart';
 
 enum _VisitFilter { all, today, yesterday, date }
@@ -145,7 +146,7 @@ class _VisitsTabState extends State<VisitsTab> {
             if (widget.controller.appointmentLoading.value)
               const Padding(
                 padding: EdgeInsets.only(top: 40),
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(child: CowWalkingLoader(label: 'Loading visits...')),
               )
             else if (filteredVisits.isEmpty)
               const Padding(

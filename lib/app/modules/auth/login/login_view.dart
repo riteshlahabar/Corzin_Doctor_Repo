@@ -81,7 +81,10 @@ class LoginView extends GetView<LoginController> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () async {
-                        final email = controller.emailController.text.trim();
+                        final typedEmail = controller.emailController.text.trim();
+                        final email = typedEmail.isNotEmpty
+                            ? typedEmail
+                            : SessionService.lastLoginEmail.trim();
                         if (email.isNotEmpty) {
                           await SessionService.saveLastLoginEmail(email);
                         }

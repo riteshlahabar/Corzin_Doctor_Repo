@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:get/get.dart';
 
 import '../../core/constants/api_constants.dart';
 import '../../core/models/doctor_profile.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/cow_walking_loader.dart';
 import '../home/home_controller.dart';
+import '../reports/reports_view.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({
@@ -156,15 +159,16 @@ class _ProfileTabState extends State<ProfileTab> {
                   firstChild: const SizedBox.shrink(),
                   secondChild: _doctorInfoCard(profile),
                 ),
+                // _menuTile(
+                //   icon: Icons.credit_card_outlined,
+                //   title: 'My cards',
+                //   subtitle: 'UPI, Debit Card, Credit Card, Net Banking, Cash',
+                // ),
                 _menuTile(
-                  icon: Icons.credit_card_outlined,
-                  title: 'My cards',
-                  subtitle: 'UPI, Debit Card, Credit Card, Net Banking, Cash',
-                ),
-                _menuTile(
-                  icon: Icons.notifications_none_rounded,
-                  title: 'Notification',
-                  subtitle: 'Manage app notifications',
+                  icon: Icons.bar_chart_rounded,
+                  title: 'Reports',
+                  subtitle: 'My earnings and my clients',
+                  onTap: () => Get.to(() => ReportsView(controller: widget.controller)),
                 ),
                 _menuTile(
                   icon: Icons.description_outlined,
@@ -177,6 +181,24 @@ class _ProfileTabState extends State<ProfileTab> {
                   title: 'Privacy policy',
                   subtitle: 'Terms, conditions and privacy policy',
                   onTap: () => _openPrivacyDialog(),
+                ),
+                _menuTile(
+                  icon: Icons.admin_panel_settings_outlined,
+                  title: 'Permissions',
+                  subtitle: 'Notification, location and alert access',
+                  onTap: _openPermissionsSheet,
+                ),
+                _menuTile(
+                  icon: Icons.lock_reset_rounded,
+                  title: 'Change Password',
+                  subtitle: 'Update your account password',
+                  onTap: _openChangePasswordDialog,
+                ),
+                _menuTile(
+                  icon: Icons.share_rounded,
+                  title: 'Referred to Doctor',
+                  subtitle: 'Share app link and earn referral points',
+                  onTap: _openReferralSheet,
                 ),
                 _menuTile(
                   icon: Icons.logout_rounded,
@@ -468,12 +490,11 @@ class _ProfileTabState extends State<ProfileTab> {
                       shape: BoxShape.circle,
                     ),
                     child: uploading
-                        ? const Padding(
-                            padding: EdgeInsets.all(4),
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.8,
-                              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                            ),
+                        ? const CowWalkingLoader(
+                            size: 18,
+                            compact: true,
+                            showLabel: false,
+                            color: AppColors.primary,
                           )
                         : const Icon(Icons.edit_rounded, size: 13, color: AppColors.primary),
                   ),
@@ -761,5 +782,813 @@ class _ProfileTabState extends State<ProfileTab> {
       title: 'Privacy Policy',
       content: widget.controller.privacyPolicy,
     );
+  }
+
+  Future<void> _openPermissionsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PermissionsSheet(controller: widget.controller),
+    );
+  }
+
+  Future<void> _openChangePasswordDialog() async {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+
+    var hideCurrentPassword = true;
+    var hideNewPassword = true;
+    var hideConfirmPassword = true;
+    var updating = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (modalContext, setModalState) {
+            InputDecoration passwordDecoration({
+              required String label,
+              required bool hidden,
+              required VoidCallback onToggle,
+            }) {
+              return InputDecoration(
+                labelText: label,
+                isDense: true,
+                filled: true,
+                fillColor: const Color(0xFFF4FAF4),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFD9E7D9)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFD9E7D9)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.primary, width: 1.2),
+                ),
+                suffixIconConstraints: const BoxConstraints(minHeight: 34, minWidth: 34),
+                suffixIcon: IconButton(
+                  splashRadius: 18,
+                  onPressed: onToggle,
+                  icon: Icon(
+                    hidden ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                    size: 18,
+                    color: AppColors.grey,
+                  ),
+                ),
+              );
+            }
+
+            Future<void> onSubmit() async {
+              final currentPassword = currentPasswordController.text.trim();
+              final newPassword = newPasswordController.text.trim();
+              final confirmPassword = confirmPasswordController.text.trim();
+
+              if (currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+                Get.snackbar('Missing Fields', 'Please fill all password fields.');
+                return;
+              }
+              if (newPassword.length < 8) {
+                Get.snackbar('Invalid Password', 'New password must be at least 8 characters.');
+                return;
+              }
+              if (newPassword != confirmPassword) {
+                Get.snackbar('Password Mismatch', 'New password and confirm password must match.');
+                return;
+              }
+
+              setModalState(() {
+                updating = true;
+              });
+              final updated = await widget.controller.changeDoctorPassword(
+                currentPassword: currentPassword,
+                newPassword: newPassword,
+                confirmPassword: confirmPassword,
+              );
+              if (!mounted || !sheetContext.mounted) return;
+              setModalState(() {
+                updating = false;
+              });
+              if (updated) {
+                Navigator.of(sheetContext).pop();
+              }
+            }
+
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 120),
+              padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                child: Material(
+                  color: AppColors.white,
+                  child: SafeArea(
+                    top: false,
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Center(
+                              child: Container(
+                                width: 44,
+                                height: 5,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFCFE0CF),
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3FAF3),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFE0EEE0)),
+                              ),
+                              child: const Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(Icons.lock_reset_rounded, size: 18, color: AppColors.primary),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Change Password',
+                                          style: TextStyle(
+                                            fontSize: 15.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.black,
+                                          ),
+                                        ),
+                                        SizedBox(height: 2),
+                                        Text(
+                                          'Update your password securely.',
+                                          style: TextStyle(fontSize: 12, color: AppColors.grey),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: currentPasswordController,
+                              obscureText: hideCurrentPassword,
+                              style: const TextStyle(fontSize: 13.2, fontWeight: FontWeight.w600),
+                              decoration: passwordDecoration(
+                                label: 'Current Password',
+                                hidden: hideCurrentPassword,
+                                onToggle: () {
+                                  setModalState(() {
+                                    hideCurrentPassword = !hideCurrentPassword;
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: newPasswordController,
+                              obscureText: hideNewPassword,
+                              style: const TextStyle(fontSize: 13.2, fontWeight: FontWeight.w600),
+                              decoration: passwordDecoration(
+                                label: 'New Password',
+                                hidden: hideNewPassword,
+                                onToggle: () {
+                                  setModalState(() {
+                                    hideNewPassword = !hideNewPassword;
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: confirmPasswordController,
+                              obscureText: hideConfirmPassword,
+                              style: const TextStyle(fontSize: 13.2, fontWeight: FontWeight.w600),
+                              decoration: passwordDecoration(
+                                label: 'Confirm Password',
+                                hidden: hideConfirmPassword,
+                                onToggle: () {
+                                  setModalState(() {
+                                    hideConfirmPassword = !hideConfirmPassword;
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: updating ? null : () => Navigator.of(sheetContext).pop(),
+                                    style: OutlinedButton.styleFrom(
+                                      minimumSize: const Size.fromHeight(40),
+                                      side: const BorderSide(color: Color(0xFFCCE0CC)),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                    child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600)),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: updating ? null : onSubmit,
+                                    style: ElevatedButton.styleFrom(
+                                      minimumSize: const Size.fromHeight(40),
+                                      backgroundColor: AppColors.primary,
+                                      foregroundColor: AppColors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                    child: Text(
+                                      updating ? 'Updating...' : 'Update Password',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.8),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    // Allow bottom-sheet close animation to finish before disposing controllers.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    currentPasswordController.dispose();
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
+  }
+
+  Future<void> _openReferralSheet() async {
+    final currentProfile = widget.controller.profile.value;
+    if (currentProfile == null) return;
+
+    final referralsFuture = widget.controller.fetchDoctorReferrals(showError: false);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: FractionallySizedBox(
+            heightFactor: 0.9,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: FutureBuilder<Map<String, dynamic>?>(
+                future: referralsFuture,
+                builder: (context, snapshot) {
+                  final data = snapshot.data ?? const <String, dynamic>{};
+                  final summary = (data['summary'] is Map<String, dynamic>)
+                      ? data['summary'] as Map<String, dynamic>
+                      : const <String, dynamic>{};
+                  final rawItems = (data['items'] is List) ? data['items'] as List : const [];
+                  final items = rawItems.whereType<Map>().map((e) {
+                    return e.map((key, value) => MapEntry(key.toString(), value));
+                  }).toList(growable: false);
+
+                  final referralCode =
+                      (data['referral_code']?.toString().trim().isNotEmpty == true)
+                          ? data['referral_code'].toString().trim()
+                          : currentProfile.referralCode.trim();
+                  final referralLink =
+                      (data['referral_link']?.toString().trim().isNotEmpty == true)
+                          ? data['referral_link'].toString().trim()
+                          : currentProfile.referralLink.trim();
+                  final referralPoints =
+                      int.tryParse((data['referral_points'] ?? currentProfile.referralPoints).toString()) ??
+                          currentProfile.referralPoints;
+
+                  Widget statChip(String label, String value) {
+                    return Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF4FAF4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFDCEBDC)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              label,
+                              style: const TextStyle(fontSize: 10.5, color: AppColors.grey),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              value,
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Padding(
+                    padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + MediaQuery.of(sheetContext).viewInsets.bottom),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 44,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFCFE0CF),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Referred to Doctor',
+                          style: TextStyle(fontFamily: 'SF Pro Display', fontSize: 18, fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Share referral link, invite doctors, and earn points.',
+                          style: TextStyle(fontSize: 12, color: AppColors.grey),
+                        ),
+                        const SizedBox(height: 12),
+                        if (snapshot.connectionState == ConnectionState.waiting)
+                          const Expanded(
+                            child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                          )
+                        else ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF4FAF4),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFFDCEBDC)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Referral Code',
+                                  style: TextStyle(fontSize: 11, color: AppColors.grey),
+                                ),
+                                const SizedBox(height: 3),
+                                SelectableText(
+                                  referralCode.isEmpty ? '-' : referralCode,
+                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 10),
+                                const Text(
+                                  'Referral Link',
+                                  style: TextStyle(fontSize: 11, color: AppColors.grey),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  referralLink.isEmpty ? '-' : referralLink,
+                                  style: const TextStyle(fontSize: 12.2, fontWeight: FontWeight.w600),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: referralLink.isEmpty
+                                        ? null
+                                        : () async {
+                                            await Clipboard.setData(ClipboardData(text: referralLink));
+                                            if (!mounted) return;
+                                            Get.snackbar('Copied', 'Referral link copied.');
+                                          },
+                                    icon: const Icon(Icons.copy_rounded, size: 18),
+                                    label: const Text('Copy Referral Link'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: AppColors.primary,
+                                      side: const BorderSide(color: Color(0xFFCDE1CD)),
+                                      minimumSize: const Size.fromHeight(38),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              statChip('Points', '$referralPoints'),
+                              const SizedBox(width: 8),
+                              statChip(
+                                'Total Referred',
+                                '${int.tryParse((summary['total_referred'] ?? 0).toString()) ?? 0}',
+                              ),
+                              const SizedBox(width: 8),
+                              statChip(
+                                'Approved',
+                                '${int.tryParse((summary['approved_referred'] ?? 0).toString()) ?? 0}',
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Referred Doctors',
+                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: items.isEmpty
+                                ? Container(
+                                    width: double.infinity,
+                                    alignment: Alignment.center,
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8FAF8),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: const Color(0xFFE2ECE2)),
+                                    ),
+                                    child: const Text(
+                                      'No referred doctor records yet.',
+                                      style: TextStyle(color: AppColors.grey, fontSize: 12.5),
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    itemCount: items.length,
+                                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                                    itemBuilder: (_, index) {
+                                      final item = items[index];
+                                      final name = item['name']?.toString().trim().isNotEmpty == true
+                                          ? item['name'].toString().trim()
+                                          : 'Doctor';
+                                      final contact = item['contact_number']?.toString() ?? '';
+                                      final status = (item['status']?.toString() ?? 'pending').toLowerCase();
+                                      final registeredAt = DateTime.tryParse(
+                                        item['registered_at']?.toString() ?? '',
+                                      );
+                                      final rewardGranted = item['reward_granted'] == true;
+
+                                      return Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF8FAF8),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(color: const Color(0xFFE2ECE2)),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    name,
+                                                    style: const TextStyle(
+                                                      fontSize: 13.2,
+                                                      fontWeight: FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                  decoration: BoxDecoration(
+                                                    color: rewardGranted
+                                                        ? const Color(0xFFDFF2DF)
+                                                        : const Color(0xFFE7E9EC),
+                                                    borderRadius: BorderRadius.circular(30),
+                                                  ),
+                                                  child: Text(
+                                                    rewardGranted ? 'Reward Granted' : 'Reward Pending',
+                                                    style: TextStyle(
+                                                      fontSize: 10.3,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: rewardGranted ? const Color(0xFF2E7D32) : AppColors.grey,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              contact.isEmpty ? '-' : contact,
+                                              style: const TextStyle(fontSize: 12, color: AppColors.grey),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'Status: ${status == 'approved' ? 'Approved' : 'Pending'}',
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: status == 'approved' ? const Color(0xFF2E7D32) : AppColors.grey,
+                                              ),
+                                            ),
+                                            if (registeredAt != null) ...[
+                                              const SizedBox(height: 1),
+                                              Text(
+                                                'Registered: ${registeredAt.day.toString().padLeft(2, '0')}-${registeredAt.month.toString().padLeft(2, '0')}-${registeredAt.year}',
+                                                style: const TextStyle(fontSize: 11, color: AppColors.grey),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PermissionsSheet extends StatefulWidget {
+  const _PermissionsSheet({required this.controller});
+
+  final HomeController controller;
+
+  @override
+  State<_PermissionsSheet> createState() => _PermissionsSheetState();
+}
+
+class _PermissionsSheetState extends State<_PermissionsSheet> {
+  late Future<List<DoctorAppPermissionItem>> _permissionsFuture;
+  DoctorAppPermissionType? _updatingType;
+
+  @override
+  void initState() {
+    super.initState();
+    _permissionsFuture = widget.controller.loadAppPermissionItems();
+  }
+
+  void _reloadPermissions() {
+    setState(() {
+      _permissionsFuture = widget.controller.loadAppPermissionItems();
+    });
+  }
+
+  Future<void> _handleToggle(DoctorAppPermissionItem item, bool enabled) async {
+    setState(() {
+      _updatingType = item.type;
+    });
+    await widget.controller.updateAppPermission(item, enabled);
+    if (!mounted) return;
+    setState(() {
+      _updatingType = null;
+      _permissionsFuture = widget.controller.loadAppPermissionItems();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: FractionallySizedBox(
+        heightFactor: 0.72,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: Material(
+            color: AppColors.white,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCFE0CF),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Container(
+                        height: 38,
+                        width: 38,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF5EA),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.admin_panel_settings_outlined, color: AppColors.primary, size: 21),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Permissions',
+                              style: TextStyle(
+                                fontFamily: 'SF Pro Display',
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.black,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Manage access required for appointments.',
+                              style: TextStyle(fontSize: 12, color: AppColors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _reloadPermissions,
+                        icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
+                        tooltip: 'Refresh',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF4FAF4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFDCEBDC)),
+                    ),
+                    child: const Text(
+                      'Android allows this app to request permissions. To turn any permission off, the phone settings screen will open.',
+                      style: TextStyle(fontSize: 11.7, color: AppColors.grey, height: 1.28),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: FutureBuilder<List<DoctorAppPermissionItem>>(
+                      future: _permissionsFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(
+                            child: CircularProgressIndicator(color: AppColors.primary),
+                          );
+                        }
+
+                        final items = snapshot.data ?? const <DoctorAppPermissionItem>[];
+                        if (items.isEmpty) {
+                          return const Center(
+                            child: Text(
+                              'No permission details available.',
+                              style: TextStyle(fontSize: 12.5, color: AppColors.grey),
+                            ),
+                          );
+                        }
+
+                        return ListView.separated(
+                          itemCount: items.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final item = items[index];
+                            final updating = _updatingType == item.type;
+                            return _permissionTile(item: item, updating: updating);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _permissionTile({
+    required DoctorAppPermissionItem item,
+    required bool updating,
+  }) {
+    final enabledColor = item.enabled ? AppColors.primary : const Color(0xFFC0392B);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: item.enabled ? const Color(0xFFF4FAF4) : const Color(0xFFFFF7F7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: item.enabled ? const Color(0xFFDCEBDC) : const Color(0xFFF2D3D3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            height: 36,
+            width: 36,
+            decoration: BoxDecoration(
+              color: item.enabled ? const Color(0xFFE6F3E6) : const Color(0xFFFFEAEA),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(_permissionIcon(item.type), color: enabledColor, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.title,
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: item.enabled ? const Color(0xFFDFF2DF) : const Color(0xFFFFE0E0),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Text(
+                        item.enabled ? 'Allowed' : 'Off',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: enabledColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  item.subtitle,
+                  style: const TextStyle(fontSize: 11.3, color: AppColors.grey, height: 1.25),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          updating
+              ? const SizedBox(
+                  height: 22,
+                  width: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                )
+              : Switch(
+                  value: item.enabled,
+                  activeThumbColor: AppColors.white,
+                  activeTrackColor: AppColors.primary,
+                  inactiveThumbColor: AppColors.white,
+                  inactiveTrackColor: const Color(0xFFE1BABA),
+                  onChanged: (value) => _handleToggle(item, value),
+                ),
+        ],
+      ),
+    );
+  }
+
+  IconData _permissionIcon(DoctorAppPermissionType type) {
+    switch (type) {
+      case DoctorAppPermissionType.notification:
+        return Icons.notifications_active_outlined;
+      case DoctorAppPermissionType.locationService:
+        return Icons.gps_fixed_rounded;
+      case DoctorAppPermissionType.locationPermission:
+        return Icons.location_on_outlined;
+      case DoctorAppPermissionType.backgroundLocation:
+        return Icons.my_location_rounded;
+      case DoctorAppPermissionType.alertSound:
+        return Icons.volume_up_outlined;
+      case DoctorAppPermissionType.appSettings:
+        return Icons.settings_outlined;
+    }
   }
 }
