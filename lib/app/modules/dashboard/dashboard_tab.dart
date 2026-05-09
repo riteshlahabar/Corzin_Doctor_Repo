@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/models/doctor_appointment.dart';
 import '../../core/theme/app_colors.dart';
 import '../home/home_controller.dart';
 
@@ -74,15 +75,24 @@ class _DashboardTabState extends State<DashboardTab> {
         final slot = (item.requestedAt ?? item.scheduledAt)?.toLocal();
         return slot != null && sameDay(slot, now);
       }).length;
-      final earnings = list.where((item) {
-        final slot = (item.completedAt ?? item.scheduledAt ?? item.requestedAt)?.toLocal();
-        return slot != null && sameDay(slot, now) && item.normalizedStatus == 'completed';
-      }).fold<double>(0, (sum, item) => sum + (item.charges ?? 0));
+      final accepted = list.where((item) {
+        if (!item.canNavigate) return false;
+        final slot = (item.scheduledAt ?? item.requestedAt)?.toLocal();
+        return slot != null && sameDay(slot, now);
+      }).length;
+
+      DateTime? activeVisitTime(DoctorAppointment item) {
+        return item.acceptedAt ?? item.treatmentStartedAt ?? item.requestedAt ?? item.scheduledAt;
+      }
 
       final nextVisit = list
-          .where((item) => item.canNavigate && item.scheduledAt != null)
+          .where((item) => item.canNavigate)
           .toList()
-        ..sort((a, b) => a.scheduledAt!.compareTo(b.scheduledAt!));
+        ..sort((a, b) {
+          final first = activeVisitTime(a) ?? DateTime(1970);
+          final second = activeVisitTime(b) ?? DateTime(1970);
+          return second.compareTo(first);
+        });
 
       final recentRequests = list.where((item) => item.canFixAppointment).take(3).toList();
       final backendBanners = widget.controller.banners;
@@ -258,15 +268,15 @@ class _DashboardTabState extends State<DashboardTab> {
                     children: [
                       Expanded(child: _SmallInfoCard(title: 'Request Total', value: '$todayVisits')),
                       const SizedBox(width: 10),
-                      Expanded(child: _SmallInfoCard(title: 'Accepted Request', value: '$pending')),
+                      Expanded(child: _SmallInfoCard(title: 'Pending Request', value: '$pending')),
                     ],
                   ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Expanded(child: _SmallInfoCard(title: 'Completed Request', value: '$completed')),
+                      Expanded(child: _SmallInfoCard(title: 'Accepted Request', value: '$accepted')),
                       const SizedBox(width: 10),
-                      Expanded(child: _SmallInfoCard(title: 'Earnings', value: 'Rs ${earnings.toStringAsFixed(0)}')),
+                      Expanded(child: _SmallInfoCard(title: 'Completed Request', value: '$completed')),
                     ],
                   ),
                 ],
@@ -276,58 +286,74 @@ class _DashboardTabState extends State<DashboardTab> {
               title: 'Next Visit',
               child: nextVisit.isEmpty
                   ? const Text(
-                      'No approved visit scheduled.',
+                      'No accepted visit yet.',
                       style: TextStyle(fontSize: 13, color: AppColors.grey),
                     )
-                  : Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF4FAF4),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFE4EFE4)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${nextVisit.first.farmerName} - ${nextVisit.first.animalName}',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  : Builder(
+                      builder: (context) {
+                        final visit = nextVisit.first;
+                        final visitAt = activeVisitTime(visit)?.toLocal();
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4FAF4),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE4EFE4)),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            DateFormat('dd MMM yyyy, hh:mm a').format(nextVisit.first.scheduledAt!.toLocal()),
-                            style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            nextVisit.first.address.isEmpty ? 'Farmer location will appear here.' : nextVisit.first.address,
-                            style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: () => widget.controller.openNavigation(nextVisit.first),
-                                  icon: const Icon(Icons.map_outlined, size: 16),
-                                  label: const Text('Map'),
-                                ),
+                              Text(
+                                '${visit.farmerName} - ${visit.animalName}',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () => widget.controller.selectedIndex.value = 2,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primary,
-                                    foregroundColor: AppColors.white,
-                                  ),
-                                  child: const Text('Open Visits'),
+                              if (visitAt != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Accepted: ${DateFormat('dd MMM yyyy, hh:mm a').format(visitAt)}',
+                                  style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
                                 ),
+                              ],
+                              const SizedBox(height: 4),
+                              Text(
+                                visit.address.isEmpty ? 'Farmer location will appear here.' : visit.address,
+                                style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => widget.controller.openNavigation(visit),
+                                      icon: const Icon(Icons.map_outlined, size: 16),
+                                      label: const Text('Map'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: () => widget.controller.selectedIndex.value = 1,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        foregroundColor: AppColors.white,
+                                      ),
+                                      child: const FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          'Open Appointment',
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
             ),
             _SectionCard(

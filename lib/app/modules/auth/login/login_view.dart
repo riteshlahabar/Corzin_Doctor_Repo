@@ -112,7 +112,7 @@ class LoginView extends GetView<LoginController> {
                   ),
                   const SizedBox(height: 14),
                   OutlinedButton(
-                    onPressed: () => Get.toNamed(AppRoutes.register),
+                    onPressed: () => Get.toNamed(AppRoutes.registerMobile),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(double.infinity, 56),
                       side: const BorderSide(color: AppColors.black, width: 1.2),

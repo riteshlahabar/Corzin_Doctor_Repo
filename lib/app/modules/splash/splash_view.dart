@@ -11,16 +11,10 @@ class SplashView extends GetView<SplashController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.white,
       body: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFEAF5EA), AppColors.surface, AppColors.white],
-          ),
-        ),
+        color: AppColors.white,
         child: SafeArea(
           child: Center(
             child: Image.asset(

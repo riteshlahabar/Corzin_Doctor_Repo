@@ -2,10 +2,6 @@ package com.doctor.corzin
 
 import android.content.Intent
 import android.os.Build
-import android.media.AudioManager
-import android.media.ToneGenerator
-import android.os.Handler
-import android.os.Looper
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -13,10 +9,6 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val toneChannelName = "doctor_corzin/alert_tone"
     private val locationChannelName = "doctor_corzin/live_location_service"
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var toneGenerator: ToneGenerator? = null
-    private var toneRunnable: Runnable? = null
-    private var toneRunning = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -85,44 +77,10 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startUniqueTone(): Boolean {
-        if (toneRunning) return true
-        toneRunning = true
-        try {
-            toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100)
-        } catch (_: Throwable) {
-            toneRunning = false
-            return false
-        }
-
-        toneRunnable = object : Runnable {
-            override fun run() {
-                if (!toneRunning) return
-                playUniquePattern()
-                mainHandler.postDelayed(this, 1100)
-            }
-        }
-        toneRunnable?.let { mainHandler.post(it) }
-        return true
-    }
-
-    private fun playUniquePattern() {
-        val tg = toneGenerator ?: return
-        tg.startTone(ToneGenerator.TONE_DTMF_9, 120)
-        mainHandler.postDelayed({ if (toneRunning) tg.startTone(ToneGenerator.TONE_DTMF_7, 120) }, 180)
-        mainHandler.postDelayed({ if (toneRunning) tg.startTone(ToneGenerator.TONE_DTMF_9, 160) }, 360)
+        return DoctorAlertToneService.start(this)
     }
 
     private fun stopUniqueTone() {
-        toneRunning = false
-        toneRunnable?.let { mainHandler.removeCallbacks(it) }
-        toneRunnable = null
-        toneGenerator?.stopTone()
-        toneGenerator?.release()
-        toneGenerator = null
-    }
-
-    override fun onDestroy() {
-        stopUniqueTone()
-        super.onDestroy()
+        DoctorAlertToneService.stop(this)
     }
 }

@@ -1,3 +1,5 @@
+import 'package:corzin_doctor/app/modules/auth/login/register_mobile/register_mobile_binding.dart';
+import 'package:corzin_doctor/app/modules/auth/login/register_mobile/register_mobile_view.dart';
 import 'package:get/get.dart';
 
 import '../modules/auth/forgot_password/forgot_password_binding.dart';
@@ -15,6 +17,7 @@ class AppRoutes {
   static const splash = '/splash';
   static const login = '/login';
   static const forgotPassword = '/forgot-password';
+  static const registerMobile = '/register-mobile';
   static const register = '/register';
   static const home = '/home';
 }
@@ -35,6 +38,11 @@ class AppPages {
       name: AppRoutes.forgotPassword,
       page: () => const ForgotPasswordView(),
       binding: ForgotPasswordBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.registerMobile,
+      page: () => const RegisterMobileView(),
+      binding: RegisterMobileBinding(),
     ),
     GetPage(
       name: AppRoutes.register,

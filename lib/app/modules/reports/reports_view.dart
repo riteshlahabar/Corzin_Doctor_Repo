@@ -25,7 +25,8 @@ class _ReportsViewState extends State<ReportsView> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
 
-  DateTime _selectedDate = DateTime.now();
+  DateTime _fromDate = DateUtils.dateOnly(DateTime.now());
+  DateTime _toDate = DateUtils.dateOnly(DateTime.now());
   int _selectedTab = 0;
   bool _loading = false;
   String _error = '';
@@ -63,7 +64,8 @@ class _ReportsViewState extends State<ReportsView> {
       final response = await _apiService.fetchDoctorReports(
         doctorId: profile.id,
         tab: _activeTabKey,
-        date: _selectedDate,
+        fromDate: _fromDate,
+        toDate: _toDate,
         search: _searchController.text.trim(),
       );
       final data = response['data'];
@@ -129,16 +131,28 @@ class _ReportsViewState extends State<ReportsView> {
     _searchDebounce = Timer(const Duration(milliseconds: 350), _loadReports);
   }
 
-  Future<void> _pickDate() async {
+  Future<void> _pickDate({required bool isFromDate}) async {
+    final current = isFromDate ? _fromDate : _toDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
+      initialDate: current,
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked == null) return;
     setState(() {
-      _selectedDate = picked;
+      final date = DateUtils.dateOnly(picked);
+      if (isFromDate) {
+        _fromDate = date;
+        if (_toDate.isBefore(_fromDate)) {
+          _toDate = _fromDate;
+        }
+      } else {
+        _toDate = date;
+        if (_fromDate.isAfter(_toDate)) {
+          _fromDate = _toDate;
+        }
+      }
     });
     await _loadReports();
   }
@@ -157,31 +171,43 @@ class _ReportsViewState extends State<ReportsView> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: _onSearchChanged,
-                    decoration: InputDecoration(
-                      hintText: _selectedTab == 0
-                          ? 'Search farmer, animal, concern'
-                          : 'Search client name or phone',
-                      prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: AppColors.line),
-                      ),
+                TextField(
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: _selectedTab == 0
+                        ? 'Search farmer, animal, concern'
+                        : 'Search client name or phone',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppColors.line),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _pickDate,
-                  icon: const Icon(Icons.event_rounded, size: 16),
-                  label: Text(_dateLabel(_selectedDate)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _dateRangeButton(
+                        label: 'From',
+                        date: _fromDate,
+                        onTap: () => _pickDate(isFromDate: true),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _dateRangeButton(
+                        label: 'To',
+                        date: _toDate,
+                        onTap: () => _pickDate(isFromDate: false),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -297,7 +323,7 @@ class _ReportsViewState extends State<ReportsView> {
           SizedBox(height: 80),
           Center(
             child: Text(
-              'No report data for selected date.',
+              'No report data for selected date range.',
               style: TextStyle(color: AppColors.grey),
             ),
           ),
@@ -362,6 +388,34 @@ class _ReportsViewState extends State<ReportsView> {
             style: const TextStyle(fontSize: 11.5, color: AppColors.grey),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _dateRangeButton({
+    required String label,
+    required DateTime date,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      height: 38,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: const Icon(Icons.event_rounded, size: 15),
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            '$label: ${_dateLabel(date)}',
+            maxLines: 1,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.line),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
       ),
     );
   }

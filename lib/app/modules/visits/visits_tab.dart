@@ -7,7 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/cow_walking_loader.dart';
 import '../home/home_controller.dart';
 
-enum _VisitFilter { all, today, yesterday, date }
+enum _VisitFilter { all, dateRange }
 
 class VisitsTab extends StatefulWidget {
   const VisitsTab({
@@ -22,8 +22,9 @@ class VisitsTab extends StatefulWidget {
 }
 
 class _VisitsTabState extends State<VisitsTab> {
-  _VisitFilter _activeFilter = _VisitFilter.today;
-  DateTime? _selectedDate;
+  _VisitFilter _activeFilter = _VisitFilter.dateRange;
+  DateTime _fromDate = DateUtils.dateOnly(DateTime.now());
+  DateTime _toDate = DateUtils.dateOnly(DateTime.now());
   String _searchQuery = '';
 
   @override
@@ -78,70 +79,48 @@ class _VisitsTabState extends State<VisitsTab> {
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
+              child: Column(
                 children: [
-                  _filterPill(
-                    label: 'Today',
-                    selected: _activeFilter == _VisitFilter.today,
-                    onTap: () => setState(() {
-                      _activeFilter = _VisitFilter.today;
-                      _selectedDate = null;
-                    }),
+                  Row(
+                    children: [
+                      _filterPill(
+                        label: 'Date Range',
+                        selected: _activeFilter == _VisitFilter.dateRange,
+                        onTap: () => setState(() => _activeFilter = _VisitFilter.dateRange),
+                      ),
+                      const SizedBox(width: 8),
+                      _filterPill(
+                        label: 'All',
+                        selected: _activeFilter == _VisitFilter.all,
+                        onTap: () => setState(() => _activeFilter = _VisitFilter.all),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  _filterPill(
-                    label: 'Yesterday',
-                    selected: _activeFilter == _VisitFilter.yesterday,
-                    onTap: () => setState(() {
-                      _activeFilter = _VisitFilter.yesterday;
-                      _selectedDate = null;
-                    }),
-                  ),
-                  const SizedBox(width: 8),
-                  _filterPill(
-                    label: 'All',
-                    selected: _activeFilter == _VisitFilter.all,
-                    onTap: () => setState(() {
-                      _activeFilter = _VisitFilter.all;
-                      _selectedDate = null;
-                    }),
-                  ),
-                  const Spacer(),
-                  InkWell(
-                    onTap: _pickDateFilter,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      height: 34,
-                      width: 34,
-                      decoration: BoxDecoration(
-                        color: _activeFilter == _VisitFilter.date ? AppColors.primary : const Color(0xFFEAF3EA),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _activeFilter == _VisitFilter.date ? AppColors.primary : const Color(0xFFD8E7D8),
+                  if (_activeFilter == _VisitFilter.dateRange) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _dateRangeButton(
+                            label: 'From',
+                            date: _fromDate,
+                            onTap: () => _pickDateFilter(isFromDate: true),
+                          ),
                         ),
-                      ),
-                      child: Icon(
-                        Icons.calendar_month_rounded,
-                        size: 18,
-                        color: _activeFilter == _VisitFilter.date ? AppColors.white : AppColors.primary,
-                      ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _dateRangeButton(
+                            label: 'To',
+                            date: _toDate,
+                            onTap: () => _pickDateFilter(isFromDate: false),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
-            if (_activeFilter == _VisitFilter.date && _selectedDate != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                child: Text(
-                  'Date: ${DateFormat('dd MMM yyyy').format(_selectedDate!)}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.grey,
-                  ),
-                ),
-              ),
             const SizedBox(height: 8),
             if (widget.controller.appointmentLoading.value)
               const Padding(
@@ -270,14 +249,10 @@ class _VisitsTabState extends State<VisitsTab> {
   }
 
   List<DoctorAppointment> _applyFilters(List<DoctorAppointment> visits) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
-
     return visits.where((item) {
       final when = (item.completedAt ?? item.scheduledAt ?? item.requestedAt)?.toLocal();
       if (when == null) return false;
-      final date = DateTime(when.year, when.month, when.day);
+      final date = DateUtils.dateOnly(when);
       final searchTarget =
           '${item.farmerName} ${item.animalName} ${item.displayAppointmentCode} ${item.concern}'.toLowerCase();
 
@@ -285,15 +260,8 @@ class _VisitsTabState extends State<VisitsTab> {
         return false;
       }
 
-      if (_activeFilter == _VisitFilter.today) {
-        return date == today;
-      }
-      if (_activeFilter == _VisitFilter.yesterday) {
-        return date == yesterday;
-      }
-      if (_activeFilter == _VisitFilter.date && _selectedDate != null) {
-        final selected = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day);
-        return date == selected;
+      if (_activeFilter == _VisitFilter.dateRange) {
+        return !date.isBefore(_fromDate) && !date.isAfter(_toDate);
       }
       if (_activeFilter == _VisitFilter.all) {
         return true;
@@ -302,19 +270,31 @@ class _VisitsTabState extends State<VisitsTab> {
     }).toList();
   }
 
-  Future<void> _pickDateFilter() async {
+  Future<void> _pickDateFilter({required bool isFromDate}) async {
     final now = DateTime.now();
+    final current = isFromDate ? _fromDate : _toDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate ?? now,
+      initialDate: current,
       firstDate: DateTime(now.year - 2),
       lastDate: DateTime(now.year + 2),
     );
     if (!mounted) return;
     if (picked != null) {
       setState(() {
-        _selectedDate = DateTime(picked.year, picked.month, picked.day);
-        _activeFilter = _VisitFilter.date;
+        final date = DateUtils.dateOnly(picked);
+        if (isFromDate) {
+          _fromDate = date;
+          if (_toDate.isBefore(_fromDate)) {
+            _toDate = _fromDate;
+          }
+        } else {
+          _toDate = date;
+          if (_fromDate.isAfter(_toDate)) {
+            _fromDate = _toDate;
+          }
+        }
+        _activeFilter = _VisitFilter.dateRange;
       });
     }
   }
@@ -343,6 +323,34 @@ class _VisitsTabState extends State<VisitsTab> {
             fontWeight: FontWeight.w600,
             color: selected ? AppColors.white : AppColors.primary,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dateRangeButton({
+    required String label,
+    required DateTime date,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      height: 36,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: const Icon(Icons.event_rounded, size: 15),
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            '$label: ${DateFormat('dd MMM yyyy').format(date)}',
+            maxLines: 1,
+            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: Color(0xFFD8E7D8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
         ),
       ),
     );

@@ -14,6 +14,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -82,6 +83,19 @@ class DoctorLiveLocationService : Service(), LocationListener {
     override fun onLocationChanged(location: Location) {
         lastLocation = location
         uploadLocation(location)
+    }
+
+    @Deprecated("Required for older Android LocationListener callbacks.")
+    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
+        // No-op. Android 9 and older can still call this callback.
+    }
+
+    override fun onProviderEnabled(provider: String) {
+        // No-op. Keeping this implemented avoids legacy runtime callback crashes.
+    }
+
+    override fun onProviderDisabled(provider: String) {
+        // No-op. Keeping this implemented avoids legacy runtime callback crashes.
     }
 
     private fun startForegroundSafely(): Boolean {

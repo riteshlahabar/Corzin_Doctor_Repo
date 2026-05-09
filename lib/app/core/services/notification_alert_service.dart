@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vibration/vibration.dart';
 
 class NotificationAlertService {
   static const MethodChannel _toneChannel = MethodChannel('doctor_corzin/alert_tone');
@@ -57,6 +55,23 @@ class NotificationAlertService {
     return payloadDoctorId == activeDoctorId;
   }
 
+  static bool isAppointmentClosedByOtherDoctor({
+    required String title,
+    required String body,
+    required Map<String, dynamic> data,
+  }) {
+    final event = (data['event'] ?? '').toString().toLowerCase();
+    final status = (data['status'] ?? '').toString().toLowerCase();
+    final subject = '$title $body'.toLowerCase();
+
+    return event == 'appointment_taken_by_other_doctor' ||
+        event == 'appointment_closed' ||
+        status == 'closed_by_other_doctor' ||
+        subject.contains('accepted by another doctor') ||
+        subject.contains('accepted by another nearby doctor') ||
+        (subject.contains('another doctor') && subject.contains('accepted'));
+  }
+
   static Future<int?> _readLoggedInDoctorId() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -82,29 +97,11 @@ class NotificationAlertService {
     }
     _lastTriggerAt = now;
 
-    stop();
+    await stop();
 
-    final startedUniqueTone = await _startUniqueTone();
-    if (!startedUniqueTone) {
-      // Fallback for background isolate / missing method-channel registration.
-      FlutterRingtonePlayer().play(
-        android: AndroidSounds.alarm,
-        ios: IosSounds.glass,
-        looping: true,
-        volume: 1.0,
-        asAlarm: true,
-      );
-    }
+    await _startUniqueTone();
 
-    final hasVibrator = await Vibration.hasVibrator();
-    if (hasVibrator) {
-      await Vibration.vibrate(
-        pattern: const [0, 600, 320],
-        repeat: 0,
-      );
-    }
-
-    _alertTimer = Timer(const Duration(seconds: 20), stop);
+    _alertTimer = Timer(const Duration(seconds: 20), () => unawaited(stop()));
   }
 
   static Future<bool> _startUniqueTone() async {
@@ -122,11 +119,9 @@ class NotificationAlertService {
     } catch (_) {}
   }
 
-  static void stop() {
+  static Future<void> stop() async {
     _alertTimer?.cancel();
     _alertTimer = null;
-    unawaited(_stopUniqueTone());
-    FlutterRingtonePlayer().stop();
-    Vibration.cancel();
+    await _stopUniqueTone();
   }
 }

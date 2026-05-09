@@ -196,8 +196,8 @@ class _ProfileTabState extends State<ProfileTab> {
                 ),
                 _menuTile(
                   icon: Icons.share_rounded,
-                  title: 'Referred to Doctor',
-                  subtitle: 'Share app link and earn referral points',
+                  title: 'Refer & Earn',
+                  subtitle: 'Share farmer app link and earn rewards',
                   onTap: _openReferralSheet,
                 ),
                 _menuTile(
@@ -1130,12 +1130,12 @@ class _ProfileTabState extends State<ProfileTab> {
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Referred to Doctor',
+                          'Refer & Earn',
                           style: TextStyle(fontFamily: 'SF Pro Display', fontSize: 18, fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          'Share referral link, invite doctors, and earn points.',
+                          'Share this farmer app link. Rewards unlock after the farmer subscribes and completes 1 month.',
                           style: TextStyle(fontSize: 12, color: AppColors.grey),
                         ),
                         const SizedBox(height: 12),
@@ -1205,19 +1205,19 @@ class _ProfileTabState extends State<ProfileTab> {
                               statChip('Points', '$referralPoints'),
                               const SizedBox(width: 8),
                               statChip(
-                                'Total Referred',
+                                'Farmers',
                                 '${int.tryParse((summary['total_referred'] ?? 0).toString()) ?? 0}',
                               ),
                               const SizedBox(width: 8),
                               statChip(
-                                'Approved',
-                                '${int.tryParse((summary['approved_referred'] ?? 0).toString()) ?? 0}',
+                                'Rewards',
+                                '${int.tryParse((summary['reward_granted'] ?? 0).toString()) ?? 0}',
                               ),
                             ],
                           ),
                           const SizedBox(height: 12),
                           const Text(
-                            'Referred Doctors',
+                            'Referred Farmers',
                             style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 8),
@@ -1233,7 +1233,7 @@ class _ProfileTabState extends State<ProfileTab> {
                                       border: Border.all(color: const Color(0xFFE2ECE2)),
                                     ),
                                     child: const Text(
-                                      'No referred doctor records yet.',
+                                      'No referred farmer records yet.',
                                       style: TextStyle(color: AppColors.grey, fontSize: 12.5),
                                     ),
                                   )
@@ -1244,9 +1244,9 @@ class _ProfileTabState extends State<ProfileTab> {
                                       final item = items[index];
                                       final name = item['name']?.toString().trim().isNotEmpty == true
                                           ? item['name'].toString().trim()
-                                          : 'Doctor';
+                                          : 'Farmer';
                                       final contact = item['contact_number']?.toString() ?? '';
-                                      final status = (item['status']?.toString() ?? 'pending').toLowerCase();
+                                      final status = (item['subscription_status']?.toString() ?? 'not_subscribed').toLowerCase();
                                       final registeredAt = DateTime.tryParse(
                                         item['registered_at']?.toString() ?? '',
                                       );
@@ -1299,11 +1299,11 @@ class _ProfileTabState extends State<ProfileTab> {
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
-                                              'Status: ${status == 'approved' ? 'Approved' : 'Pending'}',
+                                              'Subscription: ${status == 'active' ? 'Active' : 'Pending'}',
                                               style: TextStyle(
                                                 fontSize: 11.5,
                                                 fontWeight: FontWeight.w600,
-                                                color: status == 'approved' ? const Color(0xFF2E7D32) : AppColors.grey,
+                                                color: status == 'active' ? const Color(0xFF2E7D32) : AppColors.grey,
                                               ),
                                             ),
                                             if (registeredAt != null) ...[

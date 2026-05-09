@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:play_install_referrer/play_install_referrer.dart';
 
 import '../../../core/services/api_service.dart';
+import '../../../core/services/firebase_messaging_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../routes/app_pages.dart';
 
@@ -57,6 +58,7 @@ class RegisterController extends GetxController {
   }.obs;
 
   final ApiService _apiService = ApiService();
+  final FirebaseMessagingService _firebaseMessagingService = FirebaseMessagingService();
   final states = <String>[].obs;
   final districts = <String>[].obs;
   final talukas = <String>[].obs;
@@ -68,8 +70,19 @@ class RegisterController extends GetxController {
   void onInit() {
     super.onInit();
     contactController.addListener(_syncWhatsappFromContact);
-    referralCodeController.text = SessionService.pendingReferralCode;
-    stateController.text = 'Maharashtra';
+
+final args = Get.arguments;
+if (args is Map && args['verified_mobile'] != null) {
+  final verifiedMobile = args['verified_mobile'].toString().trim();
+  if (RegExp(r'^\d{10}$').hasMatch(verifiedMobile)) {
+    contactController.text = verifiedMobile;
+    whatsappController.text = verifiedMobile;
+    _lastAutoFilledWhatsapp = verifiedMobile;
+  }
+}
+
+referralCodeController.text = SessionService.pendingReferralCode;
+stateController.text = 'Maharashtra';
     _loadSettings();
     _loadLocationCascade();
     _prefillReferralCodeFromInstallReferrer();
@@ -206,6 +219,16 @@ class RegisterController extends GetxController {
     return null;
   }
 
+  String? pincodeValidator(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Pincode is required';
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(value.trim())) {
+      return 'Pincode must be exactly 6 digits';
+    }
+    return null;
+  }
+
   String? adharNumberValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Aadhar Number is required';
@@ -298,6 +321,8 @@ class RegisterController extends GetxController {
         }
       }
 
+      final fcmToken = await _loadRegistrationFcmToken();
+
       final response = await _apiService.register(
         fields: {
           'first_name': firstNameController.text.trim(),
@@ -322,6 +347,7 @@ class RegisterController extends GetxController {
           'password': passwordController.text.trim(),
           'password_confirmation': repeatPasswordController.text.trim(),
           'terms_accepted': '1',
+          if (fcmToken != null && fcmToken.isNotEmpty) 'fcm_token': fcmToken,
         },
         files: uploadFiles,
       );
@@ -338,6 +364,14 @@ class RegisterController extends GetxController {
       if (!_disposed && !isClosed) {
         isSubmitting.value = false;
       }
+    }
+  }
+
+  Future<String?> _loadRegistrationFcmToken() async {
+    try {
+      return (await _firebaseMessagingService.initialise())?.trim();
+    } catch (_) {
+      return null;
     }
   }
 

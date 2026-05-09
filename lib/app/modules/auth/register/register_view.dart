@@ -52,16 +52,17 @@ class RegisterView extends GetView<RegisterController> {
                 ),
                 const SizedBox(height: 14),
                 _twoColumn(
-                  DoctorTextField(
-                    controller: controller.contactController,
-                    label: _requiredLabel('Contact Number'),
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(10),
-                    ],
-                    validator: controller.contactNumberValidator,
-                  ),
+                 DoctorTextField(
+  controller: controller.contactController,
+  label: _requiredLabel('Contact Number'),
+  keyboardType: TextInputType.phone,
+  readOnly: true,
+  inputFormatters: [
+    FilteringTextInputFormatter.digitsOnly,
+    LengthLimitingTextInputFormatter(10),
+  ],
+  validator: controller.contactNumberValidator,
+),
                   DoctorTextField(
                     controller: controller.whatsappController,
                     label: _requiredLabel('WhatsApp Number'),
@@ -83,23 +84,6 @@ class RegisterView extends GetView<RegisterController> {
                     if (!GetUtils.isEmail(value.trim())) return 'Enter a valid email';
                     return null;
                   },
-                ),
-                const SizedBox(height: 14),
-                DoctorTextField(
-                  controller: controller.referralCodeController,
-                  label: 'Referral Code (Optional)',
-                  hint: 'Auto-filled if opened from referral link',
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_-]')),
-                    LengthLimitingTextInputFormatter(40),
-                    TextInputFormatter.withFunction((oldValue, newValue) {
-                      final upper = newValue.text.toUpperCase();
-                      return newValue.copyWith(
-                        text: upper,
-                        selection: TextSelection.collapsed(offset: upper.length),
-                      );
-                    }),
-                  ],
                 ),
                 const SizedBox(height: 14),
                 _twoColumn(
@@ -226,7 +210,11 @@ class RegisterView extends GetView<RegisterController> {
                   controller: controller.pincodeController,
                   label: _requiredLabel('Pincode'),
                   keyboardType: TextInputType.number,
-                  validator: (value) => controller.requiredValidator(value, 'Pincode'),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  validator: controller.pincodeValidator,
                 ),
                 const SizedBox(height: 24),
                 _sectionTitle('Required Documents'),

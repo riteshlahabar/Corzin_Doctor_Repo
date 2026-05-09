@@ -89,7 +89,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     _profileSyncTimer?.cancel();
     _liveLocationTimer?.cancel();
     _tabHistoryWorker?.dispose();
-    NotificationAlertService.stop();
+    unawaited(NotificationAlertService.stop());
     super.onClose();
   }
 
@@ -662,16 +662,27 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
     final finalTitle = title?.isNotEmpty == true
         ? title!
+        : (body?.isNotEmpty == true ? 'Notification' : '');
+    final finalBody = body?.isNotEmpty == true ? body! : '';
+    final alertTitle = finalTitle.isNotEmpty
+        ? finalTitle
         : (message.data['event']?.toString().trim().isNotEmpty == true
             ? message.data['event']!.toString().trim()
-            : 'Notification');
-    final finalBody = body?.isNotEmpty == true ? body! : 'You have a new update.';
+            : '');
     final isNewAppointmentNotification = await NotificationAlertService.shouldPlayForMessage(
-      title: finalTitle,
+      title: alertTitle,
       body: finalBody,
       data: message.data,
       currentDoctorId: profile.value?.id,
     );
+    final isClosedByOtherDoctor = NotificationAlertService.isAppointmentClosedByOtherDoctor(
+      title: alertTitle,
+      body: finalBody,
+      data: message.data,
+    );
+    if (isClosedByOtherDoctor) {
+      await NotificationAlertService.stop();
+    }
     if (_shouldSuppressSelfConflictNotification(
       message,
       title: finalTitle,
@@ -682,11 +693,14 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       return;
     }
 
-    notifications.insert(0, '$finalTitle: $finalBody');
-    _addNotificationEntry(
-      title: finalTitle,
-      body: finalBody,
-    );
+    final shouldDisplayNotification = finalTitle.trim().isNotEmpty || finalBody.trim().isNotEmpty;
+    if (shouldDisplayNotification) {
+      notifications.insert(0, '$finalTitle: $finalBody');
+      _addNotificationEntry(
+        title: finalTitle,
+        body: finalBody,
+      );
+    }
 
     if (isNewAppointmentNotification) {
       Get.snackbar(
@@ -695,7 +709,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         snackPosition: SnackPosition.TOP,
         duration: const Duration(seconds: 4),
       );
-    } else {
+    } else if (shouldDisplayNotification) {
       Get.snackbar(
         finalTitle,
         finalBody,
@@ -853,6 +867,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> approveAppointment(DoctorAppointment appointment) async {
+    await NotificationAlertService.stop();
     _recentLocalAcceptedAppointmentId = appointment.id;
     _recentLocalAcceptedAt = DateTime.now();
     try {
@@ -872,6 +887,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> declineAppointment(DoctorAppointment appointment) async {
+    await NotificationAlertService.stop();
     try {
       await _apiService.doctorDecision(
         appointmentId: appointment.id,
@@ -1021,6 +1037,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     required DoctorAppointment appointment,
     bool showSuccess = true,
   }) async {
+    await NotificationAlertService.stop();
     debugPrint(
       '[OTP][CTRL] sendAppointmentOtp called: appointment=${appointment.id}, '
       'status=${appointment.status}, farmerPhone=${appointment.farmerPhone}',
@@ -1263,6 +1280,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       }
       parseRaw(prefs.getString(_globalNotificationStoreKey));
 
+      fromStore.removeWhere((item) => _isPlaceholderNotification(item.title, item.body));
       fromStore.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       notificationHistory.assignAll(fromStore.take(_notificationHistoryLimit).toList());
       _loadedNotificationDoctorId = resolvedDoctorId > 0 ? resolvedDoctorId : null;
@@ -1417,8 +1435,11 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     required String title,
     required String body,
   }) {
+    final cleanBody = body.trim();
+    if (title.trim().isEmpty && cleanBody.isEmpty) {
+      return;
+    }
     final cleanTitle = title.trim().isEmpty ? 'Notification' : title.trim();
-    final cleanBody = body.trim().isEmpty ? 'You have a new update.' : body.trim();
 
     notificationHistory.insert(
       0,
@@ -1435,6 +1456,14 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
 
     _saveNotificationHistory();
+  }
+
+  bool _isPlaceholderNotification(String title, String body) {
+    final normalizedTitle = title.trim().toLowerCase();
+    final normalizedBody = body.trim().toLowerCase();
+    return normalizedTitle == 'notification' &&
+        normalizedBody.contains('you have') &&
+        normalizedBody.contains('new update');
   }
 
   String _notificationStoreKey(int doctorId) => 'doctor_notification_history_$doctorId';

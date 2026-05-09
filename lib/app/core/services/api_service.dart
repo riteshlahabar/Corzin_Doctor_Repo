@@ -28,6 +28,20 @@ class ApiService {
     return _parseResponse(response);
   }
 
+  Future<Map<String, dynamic>> checkDoctorMobileAvailability({
+    required String mobileNumber,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConstants.baseUrl}/doctor/check-mobile'),
+      headers: {'Accept': 'application/json'},
+      body: {
+        'mobile_number': mobileNumber,
+      },
+    );
+
+    return _parseResponse(response);
+  }
+
   Future<Map<String, dynamic>> forgotPassword({
     required String email,
     required String password,
@@ -81,15 +95,18 @@ class ApiService {
   Future<Map<String, dynamic>> fetchDoctorReports({
     required int doctorId,
     required String tab,
-    required DateTime date,
+    required DateTime fromDate,
+    required DateTime toDate,
     String search = '',
   }) async {
     String two(int value) => value.toString().padLeft(2, '0');
-    final dateValue = '${date.year}-${two(date.month)}-${two(date.day)}';
+    final fromDateValue = '${fromDate.year}-${two(fromDate.month)}-${two(fromDate.day)}';
+    final toDateValue = '${toDate.year}-${two(toDate.month)}-${two(toDate.day)}';
     final uri = Uri.parse('${ApiConstants.baseUrl}/doctor/reports/$doctorId').replace(
       queryParameters: {
         'tab': tab,
-        'date': dateValue,
+        'from_date': fromDateValue,
+        'to_date': toDateValue,
         if (search.trim().isNotEmpty) 'search': search.trim(),
       },
     );

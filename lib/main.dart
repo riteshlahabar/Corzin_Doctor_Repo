@@ -20,20 +20,31 @@ Future<void> _doctorFirebaseBackgroundHandler(RemoteMessage message) async {
           ? message.data['title']!.toString().trim()
           : (message.data['event']?.toString().trim().isNotEmpty == true
               ? message.data['event']!.toString().trim()
-              : 'Notification'));
+              : ''));
   final body = message.notification?.body?.trim().isNotEmpty == true
       ? message.notification!.body!.trim()
       : (message.data['body']?.toString().trim().isNotEmpty == true
           ? message.data['body']!.toString().trim()
           : (message.data['message']?.toString().trim().isNotEmpty == true
               ? message.data['message']!.toString().trim()
-              : 'You have a new update.'));
+              : ''));
 
-  await FirebaseMessagingService.persistGlobalNotification(
+  if (title.isNotEmpty || body.isNotEmpty) {
+    await FirebaseMessagingService.persistGlobalNotification(
+      title: title,
+      body: body,
+      type: message.data['type']?.toString() ?? '',
+    );
+  }
+
+  if (NotificationAlertService.isAppointmentClosedByOtherDoctor(
     title: title,
     body: body,
-    type: message.data['type']?.toString() ?? '',
-  );
+    data: message.data,
+  )) {
+    await NotificationAlertService.stop();
+    return;
+  }
 
   final shouldPlayAlert = await NotificationAlertService.shouldPlayForMessage(
     title: title,

@@ -7,6 +7,7 @@ class DoctorAppointment {
     required this.status,
     this.requestedAt,
     this.scheduledAt,
+    this.acceptedAt,
     this.completedAt,
     this.otpVerifiedAt,
     this.treatmentStartedAt,
@@ -42,6 +43,7 @@ class DoctorAppointment {
   final String status;
   final DateTime? requestedAt;
   final DateTime? scheduledAt;
+  final DateTime? acceptedAt;
   final DateTime? completedAt;
   final DateTime? otpVerifiedAt;
   final DateTime? treatmentStartedAt;
@@ -143,6 +145,7 @@ class DoctorAppointment {
     String? status,
     DateTime? requestedAt,
     DateTime? scheduledAt,
+    DateTime? acceptedAt,
     DateTime? completedAt,
     DateTime? otpVerifiedAt,
     DateTime? treatmentStartedAt,
@@ -178,6 +181,7 @@ class DoctorAppointment {
       status: status ?? this.status,
       requestedAt: requestedAt ?? this.requestedAt,
       scheduledAt: scheduledAt ?? this.scheduledAt,
+      acceptedAt: acceptedAt ?? this.acceptedAt,
       completedAt: completedAt ?? this.completedAt,
       otpVerifiedAt: otpVerifiedAt ?? this.otpVerifiedAt,
       treatmentStartedAt: treatmentStartedAt ?? this.treatmentStartedAt,
@@ -353,6 +357,7 @@ class DoctorAppointment {
       status: (json['effective_status'] ?? json['status'] ?? 'pending').toString(),
       requestedAt: parseDate(json['requested_at'] ?? json['created_at']),
       scheduledAt: parseDate(json['scheduled_at'] ?? json['appointment_at']),
+      acceptedAt: parseDate(json['accepted_at']),
       completedAt: parseDate(json['completed_at']),
       otpVerifiedAt: parseDate(json['otp_verified_at']),
       treatmentStartedAt: parseDate(json['treatment_started_at']),
