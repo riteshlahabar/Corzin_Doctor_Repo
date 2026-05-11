@@ -1,6 +1,8 @@
 package com.doctor.corzin
 
 import android.content.Intent
+import android.app.NotificationManager
+import android.content.Context
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -21,6 +23,10 @@ class MainActivity : FlutterActivity() {
                     }
                     "stopUniqueTone" -> {
                         stopUniqueTone()
+                        result.success(true)
+                    }
+                    "clearNotifications" -> {
+                        clearNotifications()
                         result.success(true)
                     }
                     else -> result.notImplemented()
@@ -82,5 +88,13 @@ class MainActivity : FlutterActivity() {
 
     private fun stopUniqueTone() {
         DoctorAlertToneService.stop(this)
+    }
+
+    private fun clearNotifications() {
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancelAll()
+        } catch (_: Throwable) {
+        }
     }
 }

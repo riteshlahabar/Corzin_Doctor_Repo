@@ -60,6 +60,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   Future<void> _bootstrap() async {
     appReady.value = false;
     await _ensureRequiredPermissionsLoop();
+    unawaited(NotificationAlertService.clearNotifications());
     _loadNotificationHistory();
     if (!isClosed) {
       appReady.value = true;
@@ -138,6 +139,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
 
+    unawaited(NotificationAlertService.clearNotifications());
     unawaited(refreshProfile());
     unawaited(refreshAppointments(silent: true, refreshLocationAfter: false));
     if (profile.value?.isActiveForAppointments == true) {

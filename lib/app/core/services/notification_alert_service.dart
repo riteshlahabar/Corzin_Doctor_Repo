@@ -124,4 +124,10 @@ class NotificationAlertService {
     _alertTimer = null;
     await _stopUniqueTone();
   }
+
+  static Future<void> clearNotifications() async {
+    try {
+      await _toneChannel.invokeMethod('clearNotifications');
+    } catch (_) {}
+  }
 }

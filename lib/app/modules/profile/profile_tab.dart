@@ -171,6 +171,14 @@ class _ProfileTabState extends State<ProfileTab> {
                   onTap: () => Get.to(() => ReportsView(controller: widget.controller)),
                 ),
                 _menuTile(
+                  icon: Icons.star_rounded,
+                  title: 'Rating',
+                  subtitle: profile.ratingsCount > 0
+                      ? '${profile.averageRating.toStringAsFixed(1)}/5 from ${profile.ratingsCount} farmer ratings'
+                      : 'No farmer rating yet',
+                  onTap: () => _openRatingSheet(profile),
+                ),
+                _menuTile(
                   icon: Icons.description_outlined,
                   title: 'Terms & Conditions',
                   subtitle: 'View latest terms from backend',
@@ -576,6 +584,74 @@ class _ProfileTabState extends State<ProfileTab> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: tile,
+    );
+  }
+
+  Future<void> _openRatingSheet(DoctorProfile profile) async {
+    final average = profile.averageRating.clamp(0, 5).toDouble();
+    final roundedStars = average.round();
+
+    await Get.bottomSheet<void>(
+      Container(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(context).padding.bottom + 18),
+        decoration: const BoxDecoration(
+          color: Color(0xFFF4FAF4),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 4,
+              width: 42,
+              decoration: BoxDecoration(
+                color: const Color(0xFFC7D8C7),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              height: 56,
+              width: 56,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3CF),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(Icons.star_rounded, color: Color(0xFFE0A11B), size: 34),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Rating',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              profile.ratingsCount > 0
+                  ? '${average.toStringAsFixed(1)} out of 5'
+                  : 'No farmer rating yet',
+              style: const TextStyle(fontSize: 13, color: AppColors.grey, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(5, (index) {
+                final filled = index < roundedStars;
+                return Icon(
+                  filled ? Icons.star_rounded : Icons.star_border_rounded,
+                  color: const Color(0xFFE0A11B),
+                  size: 32,
+                );
+              }),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '${profile.ratingsCount} farmer rating${profile.ratingsCount == 1 ? '' : 's'}',
+              style: const TextStyle(fontSize: 12.5, color: AppColors.grey, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
     );
   }
 

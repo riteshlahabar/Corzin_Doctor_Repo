@@ -11,6 +11,8 @@ class DoctorProfile {
     required this.referralCode,
     required this.referralPoints,
     required this.referralLink,
+    required this.averageRating,
+    required this.ratingsCount,
     required this.adharNumber,
     required this.panNumber,
     required this.mmcRegistrationNumber,
@@ -43,6 +45,8 @@ class DoctorProfile {
   final String referralCode;
   final int referralPoints;
   final String referralLink;
+  final double averageRating;
+  final int ratingsCount;
   final String adharNumber;
   final String panNumber;
   final String mmcRegistrationNumber;
@@ -80,6 +84,8 @@ class DoctorProfile {
       referralCode: json['referral_code'] ?? '',
       referralPoints: int.tryParse((json['referral_points'] ?? 0).toString()) ?? 0,
       referralLink: json['referral_link'] ?? '',
+      averageRating: _toDouble(json['average_rating']) ?? 0,
+      ratingsCount: int.tryParse((json['ratings_count'] ?? 0).toString()) ?? 0,
       adharNumber: json['adhar_number'] ?? '',
       panNumber: json['pan_number'] ?? '',
       mmcRegistrationNumber: json['mmc_registration_number'] ?? '',
@@ -116,6 +122,8 @@ class DoctorProfile {
       'referral_code': referralCode,
       'referral_points': referralPoints,
       'referral_link': referralLink,
+      'average_rating': averageRating,
+      'ratings_count': ratingsCount,
       'adhar_number': adharNumber,
       'pan_number': panNumber,
       'mmc_registration_number': mmcRegistrationNumber,
